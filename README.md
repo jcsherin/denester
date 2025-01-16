@@ -24,8 +24,8 @@ Nested Values:
 { a: { b: { d: true } } }
 ```
 
-All the values of the nested field `a.b.c` are stored contiguously. So `a.b.
-c` can be retrieved without having to read `a.b.d`.
+All the values of the nested field `a.b.c` are stored contiguously. So `a.b.c`
+can be retrieved without having to read `a.b.d`.
 
 ```
 ["hello", "world", null]
