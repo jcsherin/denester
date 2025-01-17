@@ -86,4 +86,54 @@ mod tests {
             ),
         }
     }
+
+    #[test]
+    fn test_deeply_nested_record() {
+        let d = Field::new("d", DataType::String, false);
+        let c = Field::new("c", DataType::Integer, false);
+        let b = Field::new("b", DataType::Struct(vec![c, d]), false);
+        let a = Field::new("a", DataType::Struct(vec![b]), false);
+
+        match a.data_type() {
+            DataType::Struct(fields) => {
+                assert_eq!(
+                    fields.len(),
+                    1,
+                    "Top-level struct '{}' should contain exactly 1 field, found {}",
+                    a.name(),
+                    fields.len()
+                );
+                assert_eq!(
+                    fields[0].name(),
+                    "b",
+                    "Expected field name 'b' in struct 'a' but found '{}'",
+                    fields[0].name()
+                );
+
+                match fields[0].data_type() {
+                    DataType::Struct(fields) => {
+                        assert_eq!(
+                            fields.len(),
+                            2,
+                            "Nested struct 'b' should have only 2 fields, found {}",
+                            fields.len()
+                        );
+
+                        assert_eq!(fields[0].name(), "c");
+                        assert_eq!(fields[0].data_type(), &DataType::Integer);
+                        assert_eq!(fields[1].name(), "d");
+                        assert_eq!(fields[1].data_type(), &DataType::String);
+                    }
+                    _ => panic!(
+                        "Field 'b' expected to be a `Struct`, found {:?}",
+                        fields[0].data_type()
+                    ),
+                }
+            }
+            _ => panic!(
+                "Field 'a' expected to be a `Struct`, found {:?}.",
+                a.data_type()
+            ),
+        }
+    }
 }
