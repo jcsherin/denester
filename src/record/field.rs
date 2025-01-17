@@ -3,7 +3,7 @@ pub enum DataType {
     Boolean,
     Integer,
     String,
-    List(Box<Field>),
+    List(Box<DataType>),
     Struct(Vec<Field>),
 }
 
@@ -54,34 +54,36 @@ mod tests {
         let name = Field::new("name", DataType::String, false);
         let age = Field::new("age", DataType::Integer, false);
         let verified = Field::new("verified", DataType::Boolean, false);
-        let email = Field::new("email", DataType::String, false);
-        let contacts = Field::new("contacts", DataType::List(Box::new(email)), true);
+        let emails = Field::new("emails", DataType::List(Box::new(DataType::String)), false);
 
         let person = Field::new(
             "person",
-            DataType::Struct(vec![name, age, verified, contacts]),
+            DataType::Struct(vec![name, age, verified, emails]),
             false,
         );
 
         match person.data_type() {
             DataType::Struct(fields) => {
-                assert_eq!(fields.len(), 4);
+                assert_eq!(
+                    fields.len(),
+                    4,
+                    "Top-level struct 'person' should contain exactly 4 fields, found {}",
+                    fields.len()
+                );
 
-                assert_eq!(fields[3].name(), "contacts");
+                assert_eq!(fields[3].name(), "emails");
                 match fields[3].data_type() {
-                    DataType::List(email) => {
-                        assert_eq!(email.name(), "email");
-                        assert_eq!(email.data_type(), &DataType::String);
-                        assert_eq!(email.is_nullable(), false);
+                    DataType::List(items) => {
+                        assert_eq!(**items, DataType::String);
                     }
                     _ => panic!(
-                        "Expected {:?} to be a `List` data type",
+                        "Expected 'emails' to be a `List(String)` type, found {:?}",
                         fields[3].data_type()
                     ),
                 }
             }
             _ => panic!(
-                "Expected {:?} to be a `Struct` data type.",
+                "Expected 'person' to be a `Struct` type, found {:?}",
                 person.data_type()
             ),
         }
