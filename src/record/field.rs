@@ -53,17 +53,22 @@ mod tests {
     fn test_nested_record() {
         let name = Field::new("name", DataType::String, false);
         let age = Field::new("age", DataType::Integer, false);
+        let verified = Field::new("verified", DataType::Boolean, false);
         let email = Field::new("email", DataType::String, false);
         let contacts = Field::new("contacts", DataType::List(Box::new(email)), true);
 
-        let person = Field::new("person", DataType::Struct(vec![name, age, contacts]), false);
+        let person = Field::new(
+            "person",
+            DataType::Struct(vec![name, age, verified, contacts]),
+            false,
+        );
 
         match person.data_type() {
             DataType::Struct(fields) => {
-                assert_eq!(fields.len(), 3);
+                assert_eq!(fields.len(), 4);
 
-                assert_eq!(fields[2].name(), "contacts");
-                match fields[2].data_type() {
+                assert_eq!(fields[3].name(), "contacts");
+                match fields[3].data_type() {
                     DataType::List(email) => {
                         assert_eq!(email.name(), "email");
                         assert_eq!(email.data_type(), &DataType::String);
@@ -71,7 +76,7 @@ mod tests {
                     }
                     _ => panic!(
                         "Expected {:?} to be a `List` data type",
-                        fields[2].data_type()
+                        fields[3].data_type()
                     ),
                 }
             }
