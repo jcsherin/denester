@@ -124,6 +124,147 @@ mod tests {
         assert_eq!(schema.fields().len(), 3);
     }
 
+    #[test]
+    fn test_required_fields() {
+        let b = bool("bool");
+        let i = integer("integer");
+        let s = string("string");
+
+        assert!(
+            !b.is_nullable(),
+            "Expected Boolean field to be required, found: {:?}",
+            b
+        );
+        assert!(
+            !i.is_nullable(),
+            "Expected Integer field to be required, found: {:?}",
+            i
+        );
+        assert!(
+            !s.is_nullable(),
+            "Expected String field to be required, found: {:?}",
+            s
+        );
+    }
+
+    #[test]
+    fn test_optional_fields() {
+        let ob = optional_bool("bool");
+        let oi = optional_integer("integer");
+        let os = optional_string("string");
+
+        assert!(
+            ob.is_nullable(),
+            "Expected Boolean field to be optional, found {:?}",
+            ob
+        );
+        assert!(
+            oi.is_nullable(),
+            "Expected Integer field to be optional, found {:?}",
+            oi
+        );
+        assert!(
+            os.is_nullable(),
+            "Expected String field to be optional, found {:?}",
+            os
+        );
+    }
+
+    #[test]
+    fn test_repeated_fields() {
+        let rb = repeated_bool("bool");
+        let ri = repeated_integer("integer");
+        let rs = repeated_string("string");
+
+        assert_eq!(
+            rb.data_type(),
+            &DataType::List(Box::new(DataType::Boolean)),
+            "Expected List(Boolean) found, {:?}",
+            rb
+        );
+        assert!(
+            rb.is_nullable(),
+            "Expected Boolean field to be optional, found: {:?}",
+            rb
+        );
+
+        assert_eq!(
+            ri.data_type(),
+            &DataType::List(Box::new(DataType::Integer)),
+            "Expected List(Integer) found, {:?}",
+            ri
+        );
+        assert!(
+            ri.is_nullable(),
+            "Expected Integer field to be optional, found {:?}",
+            ri
+        );
+
+        assert_eq!(
+            rs.data_type(),
+            &DataType::List(Box::new(DataType::String)),
+            "Expected List(String) found, {:?}",
+            rs
+        );
+        assert!(
+            rs.is_nullable(),
+            "Expected String field to be optional, found {:?}",
+            rs
+        );
+    }
+
+    fn parse_group(group: &Field) {
+        match group.data_type() {
+            DataType::Struct(fields) => {
+                assert_eq!(fields.len(), 0);
+            }
+            other => {
+                panic!("Expected Group to be Struct, found: {:?}", other);
+            }
+        }
+    }
+    #[test]
+    fn test_group() {
+        let rg = required_group("required_group", vec![]);
+        let og = optional_group("optional_group", vec![]);
+
+        assert!(
+            !rg.is_nullable(),
+            "Expected Boolean field to be required, found {:?}",
+            rg
+        );
+        assert!(
+            og.is_nullable(),
+            "Expected Boolean field to be required, found {:?}",
+            og
+        );
+
+        parse_group(&rg);
+        parse_group(&og);
+    }
+
+    #[test]
+    fn test_repeated_group() {
+        let repeated_group = repeated_group("repeated_group", vec![]);
+
+        assert!(
+            repeated_group.is_nullable(),
+            "Expected repeated Group to be optional, found {:?}",
+            repeated_group
+        );
+
+        if let DataType::List(groups) = repeated_group.data_type() {
+            if let DataType::Struct(fields) = groups.as_ref() {
+                assert_eq!(fields.len(), 0);
+            }
+        } else {
+            panic!(
+                "Expected List(Struct<...fields>) type, found {:?}",
+                repeated_group.data_type()
+            );
+        }
+    }
+
     /// Test creation of document schema provided as an example in the
     /// paper: Dremel: Interactive Analysis of Web-Scale Datasets
     ///
