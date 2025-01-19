@@ -1,5 +1,6 @@
 use crate::record::{DataType, Field};
 
+#[derive(Debug)]
 pub struct Schema {
     name: String,
     fields: Vec<Field>,
