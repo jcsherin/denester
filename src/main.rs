@@ -1,5 +1,5 @@
 mod record;
-use crate::record::{DataType, Field, Schema, SchemaBuilder};
+use crate::record::{DataType, Field, Schema, SchemaBuilder, Value};
 
 fn main() {
     let s1 = flat_schema();
@@ -14,6 +14,16 @@ fn main() {
             field.data_type(),
             field.is_nullable()
         );
+    }
+
+    let values = vec![
+        Value::Null,
+        Value::from(false),
+        Value::from(-100),
+        Value::from("hello world"),
+    ];
+    for v in &values {
+        println!("{:?}", v)
     }
 }
 
