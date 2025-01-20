@@ -17,7 +17,6 @@ fn main() {
     }
 
     let values = vec![
-        Value::Null,
         Value::from(false),
         Value::from(-100),
         Value::from("hello world"),
