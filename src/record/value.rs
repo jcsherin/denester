@@ -6,7 +6,7 @@ pub enum Value {
     Integer(Option<i64>),
     String(Option<String>),
     List(Vec<Value>),
-    // Struct(Vec<String, Value>),
+    Struct(Vec<(String, Value)>),
 }
 
 impl From<bool> for Value {
@@ -48,6 +48,12 @@ impl From<Option<&str>> for Value {
 impl<T: Into<Value>> From<Vec<T>> for Value {
     fn from(values: Vec<T>) -> Self {
         Self::List(values.into_iter().map(Into::into).collect())
+    }
+}
+
+impl From<Vec<(String, Value)>> for Value {
+    fn from(fields: Vec<(String, Value)>) -> Self {
+        Self::Struct(fields)
     }
 }
 
@@ -161,5 +167,30 @@ mod tests {
             ]),
             Value::from(vec![Some("hello"), None])
         );
+    }
+
+    #[test]
+    fn test_empty_struct() {
+        assert_eq!(
+            Value::Struct(vec![]),
+            Value::from(Vec::<(String, Value)>::new())
+        );
+    }
+
+    #[test]
+    fn test_basic_struct() {
+        let actual = Value::Struct(vec![
+            (String::from("name"), Value::from("Patricia")),
+            (String::from("id"), Value::from(1001)),
+            (String::from("enrolled"), Value::from(false)),
+        ]);
+
+        let expected = Value::Struct(vec![
+            (String::from("name"), Value::String(Some("Patricia".into()))),
+            (String::from("id"), Value::Integer(Some(1001))),
+            (String::from("enrolled"), Value::Boolean(Some(false))),
+        ]);
+
+        assert_eq!(actual, expected);
     }
 }
