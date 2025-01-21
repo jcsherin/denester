@@ -84,15 +84,15 @@ impl ValueBuilder {
     }
 
     pub fn optional_boolean(self, key: impl Into<String>, value: Option<bool>) -> Self {
-        self.field(key, value.into())
+        self.field(key, <Option<bool> as Into<Value>>::into(value))
     }
 
     pub fn optional_integer(self, key: impl Into<String>, value: Option<i64>) -> Self {
-        self.field(key, value.into())
+        self.field(key, <Option<i64> as Into<Value>>::into(value))
     }
 
     pub fn optional_string(self, key: impl Into<String>, value: Option<&str>) -> Self {
-        self.field(key, value.into())
+        self.field(key, <Option<&str> as Into<Value>>::into(value))
     }
 
     pub fn build(self) -> Value {
@@ -307,5 +307,143 @@ mod tests {
             String::from("a"),
             Value::List(vec![expected_item1, expected_item2]),
         )]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_empty_builder() {
+        let actual = ValueBuilder::new().build();
+        let expected = Value::Struct(vec![]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_builder_required_fields() {
+        let actual = ValueBuilder::new()
+            .field("name", "Patricia")
+            .field("id", 1001)
+            .field("enrolled", true)
+            .field("groups", vec![1, 2, 3])
+            .build();
+
+        let expected = Value::Struct(vec![
+            (
+                "name".to_string(),
+                Value::String(Some("Patricia".to_string())),
+            ),
+            ("id".to_string(), Value::Integer(Some(1001))),
+            ("enrolled".to_string(), Value::Boolean(Some(true))),
+            (
+                "groups".to_string(),
+                Value::List(vec![
+                    Value::Integer(Some(1)),
+                    Value::Integer(Some(2)),
+                    Value::Integer(Some(3)),
+                ]),
+            ),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_builder_optional_fields() {
+        let actual = ValueBuilder::new()
+            .optional_string("name", None::<&str>)
+            .optional_integer("id", None::<i64>)
+            .optional_boolean("enrolled", None::<bool>)
+            .repeated("groups", Vec::<i64>::new())
+            .build();
+
+        let expected = Value::Struct(vec![
+            ("name".to_string(), Value::String(None)),
+            ("id".to_string(), Value::Integer(None)),
+            ("enrolled".to_string(), Value::Boolean(None)),
+            ("groups".to_string(), Value::List(vec![])),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_builder_repeated_fields() {
+        let actual = ValueBuilder::new()
+            .repeated("empty", Vec::<Value>::new())
+            .repeated("non-empty", vec![1, 2])
+            .build();
+
+        let expected = Value::Struct(vec![
+            ("empty".to_string(), Value::List(vec![])),
+            (
+                "non-empty".to_string(),
+                Value::List(vec![Value::Integer(Some(1)), Value::Integer(Some(2))]),
+            ),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_builder_repeated_with_nulls() {
+        let actual = ValueBuilder::new()
+            .repeated("xs", vec![Some(1), None, Some(2), None])
+            .build();
+
+        let expected = Value::Struct(vec![(
+            "xs".to_string(),
+            Value::List(vec![
+                Value::Integer(Some(1)),
+                Value::Integer(None),
+                Value::Integer(Some(2)),
+                Value::Integer(None),
+            ]),
+        )]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_builder_nested_fields() {
+        let actual = ValueBuilder::new()
+            .field(
+                "a",
+                ValueBuilder::new()
+                    .repeated(
+                        "b",
+                        vec![
+                            ValueBuilder::new()
+                                .field("c", false)
+                                .field("d", 1011)
+                                .build(),
+                            ValueBuilder::new()
+                                .field("c", true)
+                                .field("d", 1010)
+                                .build(),
+                        ],
+                    )
+                    .build(),
+            )
+            .build();
+
+        let expected = Value::Struct(vec![(
+            "a".to_string(),
+            Value::Struct(vec![(
+                "b".to_string(),
+                Value::List(vec![
+                    Value::Struct(vec![
+                        ("c".to_string(), Value::Boolean(Some(false))),
+                        ("d".to_string(), Value::Integer(Some(1011))),
+                    ]),
+                    Value::Struct(vec![
+                        ("c".to_string(), Value::Boolean(Some(true))),
+                        ("d".to_string(), Value::Integer(Some(1010))),
+                    ]),
+                ]),
+            )]),
+        )]);
+
+        assert_eq!(actual, expected);
     }
 }
