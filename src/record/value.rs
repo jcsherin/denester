@@ -193,4 +193,76 @@ mod tests {
 
         assert_eq!(actual, expected);
     }
+
+    #[test]
+    fn test_struct_with_null_values() {
+        let actual = Value::Struct(vec![
+            (String::from("name"), Value::from(None::<&str>)),
+            (String::from("id"), Value::from(None::<i64>)),
+            (String::from("enrolled"), Value::from(None::<bool>)),
+        ]);
+
+        let expected = Value::Struct(vec![
+            (String::from("name"), Value::String(None)),
+            (String::from("id"), Value::Integer(None)),
+            (String::from("enrolled"), Value::Boolean(None)),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_nested_struct() {
+        let c = Value::from(vec![(String::from("c"), Value::from(true))]);
+        let b = Value::from(vec![(String::from("b"), c)]);
+        let a = Value::from(vec![(String::from("a"), b)]);
+
+        let expected = Value::Struct(vec![(
+            String::from("a"),
+            Value::Struct(vec![(
+                String::from("b"),
+                Value::Struct(vec![(String::from("c"), Value::Boolean(Some(true)))]),
+            )]),
+        )]);
+
+        assert_eq!(a, expected)
+    }
+
+    #[test]
+    fn test_repeated_struct() {
+        let item1 = Value::from(vec![(
+            String::from("b"),
+            Value::from(vec![
+                (String::from("c"), Value::from(true)),
+                (String::from("d"), Value::from(101)),
+            ]),
+        )]);
+        let item2 = Value::from(vec![(
+            String::from("b"),
+            Value::from(vec![
+                (String::from("c"), Value::from(false)),
+                (String::from("d"), Value::from(301)),
+            ]),
+        )]);
+        let actual = Value::from(vec![(String::from("a"), Value::from(vec![item1, item2]))]);
+
+        let expected_item1 = Value::Struct(vec![(
+            String::from("b"),
+            Value::Struct(vec![
+                (String::from("c"), Value::from(true)),
+                (String::from("d"), Value::from(101)),
+            ]),
+        )]);
+        let expected_item2 = Value::Struct(vec![(
+            String::from("b"),
+            Value::Struct(vec![
+                (String::from("c"), Value::from(false)),
+                (String::from("d"), Value::from(301)),
+            ]),
+        )]);
+        let expected = Value::Struct(vec![(
+            String::from("a"),
+            Value::List(vec![expected_item1, expected_item2]),
+        )]);
+    }
 }
