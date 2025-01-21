@@ -57,6 +57,49 @@ impl From<Vec<(String, Value)>> for Value {
     }
 }
 
+pub struct ValueBuilder {
+    fields: Vec<(String, Value)>,
+}
+
+impl ValueBuilder {
+    pub fn new() -> Self {
+        Self { fields: vec![] }
+    }
+
+    pub fn field(mut self, key: impl Into<String>, value: impl Into<Value>) -> Self {
+        self.fields.push((key.into(), value.into()));
+        self
+    }
+
+    pub fn repeated(
+        mut self,
+        key: impl Into<String>,
+        values: impl IntoIterator<Item = impl Into<Value>>,
+    ) -> Self {
+        self.fields.push((
+            key.into(),
+            Value::List(values.into_iter().map(Into::into).collect()),
+        ));
+        self
+    }
+
+    pub fn optional_boolean(self, key: impl Into<String>, value: Option<bool>) -> Self {
+        self.field(key, value.into())
+    }
+
+    pub fn optional_integer(self, key: impl Into<String>, value: Option<i64>) -> Self {
+        self.field(key, value.into())
+    }
+
+    pub fn optional_string(self, key: impl Into<String>, value: Option<&str>) -> Self {
+        self.field(key, value.into())
+    }
+
+    pub fn build(self) -> Value {
+        Value::Struct(self.fields)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
