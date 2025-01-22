@@ -1,4 +1,5 @@
 mod field;
+mod field_path;
 mod schema;
 mod value;
 
