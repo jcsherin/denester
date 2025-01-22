@@ -95,7 +95,7 @@ impl<'a> Iterator for FieldPathIterator<'a> {
 #[cfg(test)]
 mod tests {
     use crate::record::field_path::{FieldPath, FieldPathIterator};
-    use crate::record::schema::{bool, integer, string};
+    use crate::record::schema::{bool, integer, required_group, string};
     use crate::record::{DataType, Field, SchemaBuilder};
 
     #[test]
@@ -116,7 +116,19 @@ mod tests {
     }
 
     #[test]
-    fn test_basic_iter() {
+    fn test_empty_schema() {
+        let schema = SchemaBuilder::new("empty", vec![]).build();
+
+        let iter = FieldPathIterator {
+            stack: vec![(schema.fields().iter(), vec![])],
+        };
+        let paths = iter.collect::<Vec<FieldPath>>();
+
+        assert_eq!(paths.len(), 0);
+    }
+
+    #[test]
+    fn test_flat_record_paths() {
         let schema = SchemaBuilder::new("test", vec![])
             .field(integer("id"))
             .field(string("name"))
@@ -129,13 +141,39 @@ mod tests {
         let paths = iter.collect::<Vec<FieldPath>>();
         assert_eq!(paths.len(), 3);
 
-        assert_eq!(paths[0].path(), vec![String::from("id")]);
+        assert_eq!(paths[0].path(), vec!["id"]);
         assert_eq!(paths[0].field.data_type(), &DataType::Integer);
 
-        assert_eq!(paths[1].path(), vec![String::from("name")]);
+        assert_eq!(paths[1].path(), vec!["name"]);
         assert_eq!(paths[1].field.data_type(), &DataType::String);
 
-        assert_eq!(paths[2].path(), vec![String::from("active")]);
+        assert_eq!(paths[2].path(), vec!["active"]);
+        assert_eq!(paths[2].field.data_type(), &DataType::Boolean);
+    }
+
+    #[test]
+    fn test_nested_record_paths() {
+        let schema = SchemaBuilder::new("test", vec![])
+            .field(required_group(
+                "user",
+                vec![integer("id"), string("name"), bool("active")],
+            ))
+            .build();
+
+        let iter = FieldPathIterator {
+            stack: vec![(schema.fields().iter(), vec![])],
+        };
+        let paths = iter.collect::<Vec<FieldPath>>();
+
+        assert_eq!(paths.len(), 3);
+
+        assert_eq!(paths[0].path(), vec!["user", "id"]);
+        assert_eq!(paths[0].field.data_type(), &DataType::Integer);
+
+        assert_eq!(paths[1].path(), vec!["user", "name"]);
+        assert_eq!(paths[1].field.data_type(), &DataType::String);
+
+        assert_eq!(paths[2].path(), vec!["user", "active"]);
         assert_eq!(paths[2].field.data_type(), &DataType::Boolean);
     }
 }
