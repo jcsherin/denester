@@ -20,6 +20,19 @@ impl<'a> FieldPath<'a> {
     }
 }
 
+pub struct FieldPathIterator<'a> {
+    fields: Vec<std::slice::Iter<'a, Field>>,
+    current_path: Vec<String>,
+}
+
+impl<'a> Iterator for FieldPathIterator<'a> {
+    type Item = FieldPath<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::record::field_path::FieldPath;
