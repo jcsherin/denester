@@ -175,12 +175,38 @@ impl<'a> PathMetadata<'a> {
     }
 }
 
+pub struct PathMetadataIterator<'a> {
+    schema: &'a Schema,
+    field_path_iter: FieldPathIterator<'a>,
+}
+
+impl<'a> PathMetadataIterator<'a> {
+    pub fn new(schema: &'a Schema) -> Self {
+        Self {
+            schema,
+            field_path_iter: FieldPathIterator::new(schema),
+        }
+    }
+}
+
+impl<'a> Iterator for PathMetadataIterator<'a> {
+    type Item = PathMetadata<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.field_path_iter
+            .next()
+            .map(|field_path| PathMetadata::new(self.schema, &field_path))
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::record::field_path::{FieldPath, FieldPathIterator, PathMetadata};
+    use crate::record::field_path::{
+        FieldPath, FieldPathIterator, PathMetadata, PathMetadataIterator,
+    };
     use crate::record::schema::{
-        bool, integer, optional_group, optional_string, repeated_group, repeated_integer,
-        required_group, string,
+        bool, integer, optional_group, optional_integer, optional_string, repeated_group,
+        repeated_integer, required_group, string,
     };
     use crate::record::{DataType, Field, SchemaBuilder};
 
@@ -451,5 +477,66 @@ mod tests {
         assert_eq!(actual.path, vec!["Name", "Url"]);
         assert_eq!(actual.definition_level, 2);
         assert_eq!(actual.repetition_level, 1);
+    }
+
+    /// Schema:
+    /// ```text
+    /// message Order {
+    ///   required integer id;
+    ///   repeated group items {
+    ///     required integer item_id;
+    ///     optional integer quantity;
+    ///   }
+    ///   required group customer {
+    ///     required string name;
+    ///     optional string email;
+    ///   }
+    /// }
+    ///
+    /// | Path              | Definition Level | Repetition Level |
+    /// |-------------------|------------------|------------------|
+    /// | id                | 0                | 0                |
+    /// | items.item_id     | 1                | 1                |
+    /// | items.quantity    | 2                | 1                |
+    /// | customer.name     | 0                | 0                |
+    /// | customer.email    | 1                | 0                |
+    /// ```
+    #[test]
+    fn test_path_metadata_iterator() {
+        let schema = SchemaBuilder::new("Order", vec![])
+            .field(integer("id"))
+            .field(repeated_group(
+                "items",
+                vec![integer("item_id"), optional_integer("quantity")],
+            ))
+            .field(required_group(
+                "customer",
+                vec![string("name"), optional_string("email")],
+            ))
+            .build();
+
+        let path_metadata = PathMetadataIterator::new(&schema).collect::<Vec<_>>();
+
+        assert_eq!(path_metadata.len(), 5);
+
+        assert_eq!(path_metadata[0].path, ["id"]);
+        assert_eq!(path_metadata[0].definition_level, 0);
+        assert_eq!(path_metadata[0].repetition_level, 0);
+
+        assert_eq!(path_metadata[1].path, ["items", "item_id"]);
+        assert_eq!(path_metadata[1].definition_level, 1);
+        assert_eq!(path_metadata[1].repetition_level, 1);
+
+        assert_eq!(path_metadata[2].path, ["items", "quantity"]);
+        assert_eq!(path_metadata[2].definition_level, 2);
+        assert_eq!(path_metadata[2].repetition_level, 1);
+
+        assert_eq!(path_metadata[3].path, ["customer", "name"]);
+        assert_eq!(path_metadata[3].definition_level, 0);
+        assert_eq!(path_metadata[3].repetition_level, 0);
+
+        assert_eq!(path_metadata[4].path, ["customer", "email"]);
+        assert_eq!(path_metadata[4].definition_level, 1);
+        assert_eq!(path_metadata[4].repetition_level, 0);
     }
 }
