@@ -1,3 +1,7 @@
+use std::fmt;
+use std::fmt::Formatter;
+use std::fmt::Write;
+
 #[derive(Debug, PartialEq)]
 pub enum DataType {
     Boolean,
@@ -33,6 +37,43 @@ impl Field {
 
     pub fn is_nullable(&self) -> bool {
         self.nullable
+    }
+}
+
+impl fmt::Display for Field {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            " name: {}, nullable: {}, type: {}",
+            self.name, self.nullable, self.data_type,
+        )
+    }
+}
+
+impl fmt::Display for DataType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            DataType::Boolean => write!(f, "Boolean"),
+            DataType::Integer => write!(f, "Integer"),
+            DataType::String => write!(f, "String"),
+            DataType::List(ref inner) => write!(f, "List [ {} ]", inner),
+            DataType::Struct(fields) => {
+                writeln!(f, "Struct {}", "{")?;
+                let mut buf = String::new();
+                for field in fields.iter() {
+                    writeln!(buf, "  {},", field)?;
+                }
+                writeln!(
+                    f,
+                    "{}",
+                    buf.lines()
+                        .map(|line| format!(" {}", line))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )?;
+                write!(f, "{}", "}")
+            }
+        }
     }
 }
 
