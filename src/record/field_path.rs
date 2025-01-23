@@ -342,4 +342,114 @@ mod tests {
         assert_eq!(path_metadata.definition_level, 0);
         assert_eq!(path_metadata.repetition_level, 0);
     }
+
+    /// Schema example from the paper:
+    ///     Dremel: Interactive Analysis of Web-Scale Datasets
+    ///
+    /// ```text
+    /// message Document {
+    ///   required int64 DocId;
+    ///   optional group Links {
+    ///     repeated int64 Backward;
+    ///     repeated int64 Forward;
+    ///   }
+    ///   repeated group Name {
+    ///     repeated group Language {
+    ///       required string Code;
+    ///       optional string Country;
+    ///     }
+    ///     optional string Url;
+    ///   }
+    /// }
+    ///
+    /// Paths in Document,
+    ///     1. DocId
+    ///     2. Links.Backward
+    ///     3. Links.Forward
+    ///     4. Name.Language.Code
+    ///     5. Name.Language.Country
+    ///     6. Name.Url
+    ///
+    ///
+    /// | Path                  | Definition Level | Repetition Level |
+    /// |-----------------------|------------------|------------------|
+    /// | DocId                 | 0                | 0                |
+    /// | Links.Backward        | 2                | 1                |
+    /// | Links.Forward         | 2                | 1                |
+    /// | Name.Language.Code    | 2                | 2                |
+    /// | Name.Language.Country | 3                | 2                |
+    /// | Name.Url              | 2                | 1                |
+    /// ```
+    #[test]
+    fn test_dremel_schema_path_metadata() {
+        let schema = SchemaBuilder::new("dremel", vec![])
+            .field(integer("DocId"))
+            .field(optional_group(
+                "Links",
+                vec![repeated_integer("Backward"), repeated_integer("Forward")],
+            ))
+            .field(repeated_group(
+                "Name",
+                vec![
+                    repeated_group("Language", vec![string("Code"), optional_string("Country")]),
+                    optional_string("Url"),
+                ],
+            ))
+            .build();
+
+        let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
+
+        let actual = PathMetadata::new(&schema, &paths[0]);
+        assert_eq!(actual.field.data_type(), &DataType::Integer);
+        assert_eq!(actual.field.name(), "DocId");
+        assert_eq!(actual.field.is_nullable(), false);
+        assert_eq!(actual.path, vec!["DocId"]);
+        assert_eq!(actual.definition_level, 0);
+        assert_eq!(actual.repetition_level, 0);
+
+        let actual = PathMetadata::new(&schema, &paths[1]);
+        assert_eq!(
+            actual.field.data_type(),
+            &DataType::List(Box::new(DataType::Integer))
+        );
+        assert_eq!(actual.field.name(), "Backward");
+        assert_eq!(actual.field.is_nullable(), true);
+        assert_eq!(actual.path, vec!["Links", "Backward"]);
+        assert_eq!(actual.definition_level, 2);
+        assert_eq!(actual.repetition_level, 1);
+
+        let actual = PathMetadata::new(&schema, &paths[2]);
+        assert_eq!(
+            actual.field.data_type(),
+            &DataType::List(Box::new(DataType::Integer))
+        );
+        assert_eq!(actual.field.name(), "Forward");
+        assert_eq!(actual.path, vec!["Links", "Forward"]);
+        assert_eq!(actual.definition_level, 2);
+        assert_eq!(actual.repetition_level, 1);
+
+        let actual = PathMetadata::new(&schema, &paths[3]);
+        assert_eq!(actual.field.data_type(), &DataType::String);
+        assert_eq!(actual.field.name(), "Code");
+        assert_eq!(actual.field.is_nullable(), false);
+        assert_eq!(actual.path, vec!["Name", "Language", "Code"]);
+        assert_eq!(actual.definition_level, 2);
+        assert_eq!(actual.repetition_level, 2);
+
+        let actual = PathMetadata::new(&schema, &paths[4]);
+        assert_eq!(actual.field.data_type(), &DataType::String);
+        assert_eq!(actual.field.name(), "Country");
+        assert_eq!(actual.field.is_nullable(), true);
+        assert_eq!(actual.path, vec!["Name", "Language", "Country"]);
+        assert_eq!(actual.definition_level, 3);
+        assert_eq!(actual.repetition_level, 2);
+
+        let actual = PathMetadata::new(&schema, &paths[5]);
+        assert_eq!(actual.field.data_type(), &DataType::String);
+        assert_eq!(actual.field.name(), "Url");
+        assert_eq!(actual.field.is_nullable(), true);
+        assert_eq!(actual.path, vec!["Name", "Url"]);
+        assert_eq!(actual.definition_level, 2);
+        assert_eq!(actual.repetition_level, 1);
+    }
 }
