@@ -1,4 +1,4 @@
-use crate::record::{DataType, Field};
+use crate::record::{DataType, Field, Schema};
 
 #[derive(Debug)]
 pub struct FieldPath<'a> {
@@ -20,8 +20,27 @@ impl<'a> FieldPath<'a> {
     }
 }
 
+struct FieldLevel<'a> {
+    iter: std::slice::Iter<'a, Field>,
+    path: Vec<String>,
+}
+
+impl<'a> FieldLevel<'a> {
+    fn new(iter: std::slice::Iter<'a, Field>, path: Vec<String>) -> Self {
+        Self { iter, path }
+    }
+}
+
 pub struct FieldPathIterator<'a> {
-    stack: Vec<(std::slice::Iter<'a, Field>, Vec<String>)>,
+    levels: Vec<FieldLevel<'a>>,
+}
+
+impl<'a> FieldPathIterator<'a> {
+    pub fn new(schema: &'a Schema) -> Self {
+        Self {
+            levels: vec![FieldLevel::new(schema.fields().iter(), vec![])],
+        }
+    }
 }
 
 impl<'a> Iterator for FieldPathIterator<'a> {
@@ -64,30 +83,30 @@ impl<'a> Iterator for FieldPathIterator<'a> {
     8. Pop TopLevel Iterator
     **/
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some((field_iter, current_path)) = self.stack.last_mut() {
-            if let Some(field) = field_iter.next() {
-                let mut path = current_path.clone();
+        while let Some(field_level) = self.levels.last_mut() {
+            if let Some(field) = field_level.iter.next() {
+                let mut path = field_level.path.clone();
                 path.push(field.name().to_string());
 
                 match field.data_type() {
-                    DataType::Struct(inner_fields) => {
-                        self.stack.push((inner_fields.iter(), path));
-                        continue;
-                    }
-                    DataType::List(inner_type) => match inner_type.as_ref() {
-                        DataType::Struct(inner_fields) => {
-                            self.stack.push((inner_fields.iter(), path));
-                            continue;
-                        }
-                        _ => return Some(FieldPath::new(field, path)),
-                    },
                     DataType::Boolean | DataType::Integer | DataType::String => {
-                        return Some(FieldPath::new(field, path));
+                        return Some(FieldPath { field, path })
+                    }
+                    DataType::List(datatype) => match datatype.as_ref() {
+                        DataType::Struct(fields) => {
+                            self.levels.push(FieldLevel::new(fields.iter(), path))
+                        }
+                        _ => return Some(FieldPath { field, path }),
+                    },
+                    DataType::Struct(fields) => {
+                        self.levels.push(FieldLevel::new(fields.iter(), path))
                     }
                 }
+            } else {
+                self.levels.pop();
             }
-            self.stack.pop();
         }
+
         None
     }
 }
@@ -121,12 +140,7 @@ mod tests {
     #[test]
     fn test_empty_schema() {
         let schema = SchemaBuilder::new("empty", vec![]).build();
-
-        let iter = FieldPathIterator {
-            stack: vec![(schema.fields().iter(), vec![])],
-        };
-        let paths = iter.collect::<Vec<FieldPath>>();
-
+        let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
         assert_eq!(paths.len(), 0);
     }
 
@@ -138,10 +152,7 @@ mod tests {
             .field(bool("active"))
             .build();
 
-        let iter = FieldPathIterator {
-            stack: vec![(schema.fields().iter(), vec![])],
-        };
-        let paths = iter.collect::<Vec<FieldPath>>();
+        let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
         assert_eq!(paths.len(), 3);
 
         assert_eq!(paths[0].path(), vec!["id"]);
@@ -163,11 +174,7 @@ mod tests {
             ))
             .build();
 
-        let iter = FieldPathIterator {
-            stack: vec![(schema.fields().iter(), vec![])],
-        };
-        let paths = iter.collect::<Vec<FieldPath>>();
-
+        let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
         assert_eq!(paths.len(), 3);
 
         assert_eq!(paths[0].path(), vec!["user", "id"]);
@@ -224,11 +231,7 @@ mod tests {
             ))
             .build();
 
-        let iter = FieldPathIterator {
-            stack: vec![(schema.fields().iter(), vec![])],
-        };
-        let paths = iter.collect::<Vec<FieldPath>>();
-
+        let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
         assert_eq!(paths.len(), 6);
 
         assert_eq!(paths[0].path(), vec!["DocId"]);
