@@ -111,9 +111,73 @@ impl<'a> Iterator for FieldPathIterator<'a> {
     }
 }
 
+#[derive(Debug)]
+pub struct PathMetadata<'a> {
+    field: &'a Field,
+    path: Vec<String>,
+    definition_level: u8,
+    repetition_level: u8,
+}
+
+impl<'a> PathMetadata<'a> {
+    pub fn new(schema: &Schema, field_path: &FieldPath<'a>) -> Self {
+        let (definition_level, repetition_level) = Self::compute_levels(schema, field_path);
+
+        Self {
+            field: field_path.field(),
+            path: field_path.path().to_vec(),
+            definition_level,
+            repetition_level,
+        }
+    }
+
+    fn compute_levels(schema: &Schema, field_path: &FieldPath) -> (u8, u8) {
+        let mut definition_level = 0;
+        let mut repetition_level = 0;
+
+        let mut current_fields = schema.fields();
+        for name in field_path.path() {
+            let field = current_fields
+                .iter()
+                .find(|f| f.name() == name)
+                .expect(&format!(
+                    "Field with name: {:?} not found in path: {:?}",
+                    name,
+                    field_path.path()
+                ));
+
+            match field.data_type() {
+                DataType::Boolean | DataType::Integer | DataType::String | DataType::Struct(_) => {
+                    if field.is_nullable() {
+                        definition_level += 1;
+                    }
+                }
+                DataType::List(_) => {
+                    definition_level += 1;
+                    repetition_level += 1;
+                }
+            }
+
+            current_fields = match field.data_type() {
+                DataType::List(datatype) => {
+                    if let DataType::Struct(fields) = datatype.as_ref() {
+                        fields
+                    } else {
+                        &[]
+                    }
+                }
+                DataType::Struct(fields) => fields,
+                _ => &[],
+            };
+        }
+
+        (definition_level, repetition_level)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::record::field_path::{FieldPath, FieldPathIterator};
+    use crate::record::field_path::{FieldPath, FieldPathIterator, PathMetadata};
     use crate::record::schema::{
         bool, integer, optional_group, optional_string, repeated_group, repeated_integer,
         required_group, string,
@@ -138,14 +202,14 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_schema() {
+    fn test_empty_field_path_iterator() {
         let schema = SchemaBuilder::new("empty", vec![]).build();
         let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
         assert_eq!(paths.len(), 0);
     }
 
     #[test]
-    fn test_flat_record_paths() {
+    fn test_basic_field_path_iterator() {
         let schema = SchemaBuilder::new("test", vec![])
             .field(integer("id"))
             .field(string("name"))
@@ -166,7 +230,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_record_paths() {
+    fn test_nested_field_path_iterator() {
         let schema = SchemaBuilder::new("test", vec![])
             .field(required_group(
                 "user",
@@ -215,7 +279,7 @@ mod tests {
     ///     6. Name.Url
     /// ```
     #[test]
-    fn test_complex_schema() {
+    fn test_dremel_schema_field_path_iterator() {
         let schema = SchemaBuilder::new("complex", vec![])
             .field(integer("DocId"))
             .field(optional_group(
@@ -247,5 +311,35 @@ mod tests {
         assert_eq!(paths[3].field().name(), "Code");
         assert_eq!(paths[4].field().name(), "Country");
         assert_eq!(paths[5].field().name(), "Url");
+    }
+
+    #[test]
+    fn test_basic_field_path_metadata() {
+        let schema = SchemaBuilder::new("test", vec![])
+            .field(integer("id"))
+            .build();
+        let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
+
+        let id_metadata = PathMetadata::new(&schema, &paths[0]);
+
+        assert_eq!(*id_metadata.field, integer("id"));
+        assert_eq!(id_metadata.path, vec!["id"]);
+        assert_eq!(id_metadata.definition_level, 0);
+        assert_eq!(id_metadata.repetition_level, 0);
+    }
+
+    #[test]
+    fn test_nested_field_path_metadata() {
+        let schema = SchemaBuilder::new("test", vec![])
+            .field(required_group("user", vec![string("name")]))
+            .build();
+        let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
+
+        let path_metadata = PathMetadata::new(&schema, &paths[0]);
+
+        assert_eq!(*path_metadata.field, string("name"));
+        assert_eq!(path_metadata.path, vec!["user", "name"]);
+        assert_eq!(path_metadata.definition_level, 0);
+        assert_eq!(path_metadata.repetition_level, 0);
     }
 }
