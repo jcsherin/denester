@@ -95,7 +95,10 @@ impl<'a> Iterator for FieldPathIterator<'a> {
 #[cfg(test)]
 mod tests {
     use crate::record::field_path::{FieldPath, FieldPathIterator};
-    use crate::record::schema::{bool, integer, required_group, string};
+    use crate::record::schema::{
+        bool, integer, optional_group, optional_string, repeated_group, repeated_integer,
+        required_group, string,
+    };
     use crate::record::{DataType, Field, SchemaBuilder};
 
     #[test]
@@ -175,5 +178,71 @@ mod tests {
 
         assert_eq!(paths[2].path(), vec!["user", "active"]);
         assert_eq!(paths[2].field.data_type(), &DataType::Boolean);
+    }
+
+    /// Schema example from the paper:
+    ///     Dremel: Interactive Analysis of Web-Scale Datasets
+    ///
+    /// ```text
+    /// message Document {
+    ///   required int64 DocId;
+    ///   optional group Links {
+    ///     repeated int64 Backward;
+    ///     repeated int64 Forward;
+    ///   }
+    ///   repeated group Name {
+    ///     repeated group Language {
+    ///       required string Code;
+    ///       optional string Country;
+    ///     }
+    ///     optional string Url;
+    ///   }
+    /// }
+    ///
+    /// Paths in Document,
+    ///     1. DocId
+    ///     2. Links.Backward
+    ///     3. Links.Forward
+    ///     4. Name.Language.Code
+    ///     5. Name.Language.Country
+    ///     6. Name.Url
+    /// ```
+    #[test]
+    fn test_complex_schema() {
+        let schema = SchemaBuilder::new("complex", vec![])
+            .field(integer("DocId"))
+            .field(optional_group(
+                "Links",
+                vec![repeated_integer("Backward"), repeated_integer("Forward")],
+            ))
+            .field(repeated_group(
+                "Name",
+                vec![
+                    repeated_group("Language", vec![string("Code"), optional_string("Country")]),
+                    optional_string("Url"),
+                ],
+            ))
+            .build();
+
+        let iter = FieldPathIterator {
+            stack: vec![(schema.fields().iter(), vec![])],
+        };
+        let paths = iter.collect::<Vec<FieldPath>>();
+
+        assert_eq!(paths.len(), 6);
+
+        assert_eq!(paths[0].path(), vec!["DocId"]);
+        assert_eq!(paths[1].path(), vec!["Links", "Backward"]);
+        assert_eq!(paths[2].path(), vec!["Links", "Forward"]);
+        assert_eq!(paths[3].path(), vec!["Name", "Language", "Code"]);
+        assert_eq!(paths[4].path(), vec!["Name", "Language", "Country"]);
+        assert_eq!(paths[5].path(), vec!["Name", "Url"]);
+
+        assert_eq!(paths[0].field().name(), "DocId");
+        assert_eq!(paths[1].field().name(), "Backward");
+        assert_eq!(paths[2].field().name(), "Forward");
+        assert_eq!(paths[3].field().name(), "Code");
+        assert_eq!(paths[4].field().name(), "Country");
+        assert_eq!(paths[5].field().name(), "Url");
     }
 }
