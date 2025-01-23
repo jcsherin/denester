@@ -44,8 +44,14 @@ impl fmt::Display for Field {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            " name: {}, nullable: {}, type: {}",
-            self.name, self.nullable, self.data_type,
+            "{} {} {}",
+            self.name,
+            if self.nullable {
+                "optional"
+            } else {
+                "required"
+            },
+            self.data_type,
         )
     }
 }

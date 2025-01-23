@@ -1,4 +1,7 @@
 use crate::record::{DataType, Field};
+use std::fmt;
+use std::fmt::Formatter;
+use std::fmt::Write;
 
 #[derive(Debug)]
 pub struct Schema {
@@ -20,6 +23,20 @@ impl Schema {
 
     pub fn fields(&self) -> &[Field] {
         &self.fields
+    }
+}
+
+impl fmt::Display for Schema {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut buf = String::new();
+
+        writeln!(&mut buf, "{} {{", self.name)?;
+        for field in &self.fields {
+            writeln!(&mut buf, "{}", field)?;
+        }
+        writeln!(&mut buf, "}}")?;
+
+        write!(f, "{}", buf)
     }
 }
 
