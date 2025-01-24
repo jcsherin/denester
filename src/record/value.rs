@@ -100,6 +100,25 @@ impl ValueBuilder {
     }
 }
 
+struct DfsIterator<'a> {
+    stack: Vec<&'a Value>,
+}
+
+impl Value {
+    pub fn iter_depth_first(&self) -> DfsIterator {
+        DfsIterator { stack: vec![self] }
+    }
+}
+
+impl<'a> Iterator for DfsIterator<'a> {
+    type Item = &'a Value;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        println!("Current stack size: {}", self.stack.len());
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -445,5 +464,54 @@ mod tests {
         )]);
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_dfs_primitive_values() {
+        let actual = Value::Boolean(Some(true))
+            .iter_depth_first()
+            .collect::<Vec<&Value>>();
+
+        assert_eq!(actual, vec![&Value::Boolean(Some(true))]);
+    }
+
+    #[test]
+    fn test_dfs_list() {
+        let value = Value::List(vec![
+            Value::Boolean(Some(true)),
+            Value::Boolean(Some(false)),
+            Value::Boolean(None),
+        ]);
+
+        let actual = value.iter_depth_first().collect::<Vec<&Value>>();
+
+        assert_eq!(
+            actual,
+            vec![
+                &Value::Boolean(Some(true)),
+                &Value::Boolean(Some(false)),
+                &Value::Boolean(None)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_dfs_struct() {
+        let value = Value::Struct(vec![
+            ("name".to_string(), Value::String(None)),
+            ("age".to_string(), Value::Integer(None)),
+            ("active".to_string(), Value::Boolean(None)),
+        ]);
+
+        let actual = value.iter_depth_first().collect::<Vec<&Value>>();
+
+        assert_eq!(
+            actual,
+            vec![
+                &Value::String(None),
+                &Value::Integer(None),
+                &Value::Boolean(None)
+            ]
+        );
     }
 }
