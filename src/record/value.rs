@@ -140,17 +140,17 @@ impl ValueBuilder {
     }
 }
 
-struct DfsIterator<'a> {
+pub struct DepthFirstValueIterator<'a> {
     stack: Vec<&'a Value>,
 }
 
 impl Value {
-    pub fn iter_depth_first(&self) -> DfsIterator {
-        DfsIterator { stack: vec![self] }
+    pub fn iter_depth_first(&self) -> DepthFirstValueIterator {
+        DepthFirstValueIterator { stack: vec![self] }
     }
 }
 
-impl<'a> Iterator for DfsIterator<'a> {
+impl<'a> Iterator for DepthFirstValueIterator<'a> {
     type Item = &'a Value;
 
     fn next(&mut self) -> Option<Self::Item> {
