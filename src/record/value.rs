@@ -1,3 +1,6 @@
+use std::fmt;
+use std::fmt::Formatter;
+
 /// None is used to represent NULL values corresponding to the type
 /// `Value::Boolean(None)` is a `Boolean` NULL value.
 #[derive(Debug, PartialEq)]
@@ -7,6 +10,43 @@ pub enum Value {
     String(Option<String>),
     List(Vec<Value>),
     Struct(Vec<(String, Value)>),
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Boolean(value) => write!(
+                f,
+                "{}",
+                value.map_or(String::from("<null>"), |b| b.to_string())
+            ),
+            Value::Integer(value) => write!(
+                f,
+                "{}",
+                value.map_or(String::from("<null>"), |n| n.to_string())
+            ),
+            Value::String(value) => write!(f, "{}", value.as_ref().map_or("<null>", |s| s)),
+            Value::List(values) if values.is_empty() => write!(f, "[]"),
+            Value::List(values) => {
+                write!(f, "[")?;
+                for (i, value) in values.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?
+                    }
+                    write!(f, "{}", value)?;
+                }
+                write!(f, "]")
+            }
+            Value::Struct(fields) if fields.is_empty() => write!(f, "{{}}"),
+            Value::Struct(fields) => {
+                writeln!(f, " {{ ")?;
+                for (k, v) in fields {
+                    writeln!(f, "  {}: {},", k, v)?;
+                }
+                write!(f, " }} ")
+            }
+        }
+    }
 }
 
 impl From<bool> for Value {
