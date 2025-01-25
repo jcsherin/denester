@@ -552,9 +552,9 @@ mod tests {
         let items = value.iter_depth_first().collect::<Vec<&Value>>();
 
         assert_eq!(items.len(), 3);
-        assert!(matches!(items[0], Value::Boolean(Some(true))));
-        assert!(matches!(items[1], Value::Boolean(Some(false))));
-        assert!(matches!(items[2], Value::Boolean(None)));
+        assert_eq!(items[0], &Value::Boolean(Some(true)));
+        assert_eq!(items[1], &Value::Boolean(Some(false)));
+        assert_eq!(items[2], &Value::Boolean(None));
     }
 
     #[test]
@@ -575,9 +575,9 @@ mod tests {
         let items = value.iter_depth_first().collect::<Vec<&Value>>();
 
         assert_eq!(items.len(), 3);
-        assert!(matches!(items[0], Value::String(None)));
-        assert!(matches!(items[1], Value::Integer(None)));
-        assert!(matches!(items[2], Value::Boolean(None)));
+        assert_eq!(items[0], &Value::String(None));
+        assert_eq!(items[1], &Value::Integer(None));
+        assert_eq!(items[2], &Value::Boolean(None));
     }
 
     #[test]
@@ -609,13 +609,13 @@ mod tests {
         let items = value.iter_depth_first().collect::<Vec<&Value>>();
 
         assert_eq!(items.len(), 8);
-        assert!(matches!(items[0], Value::Integer(Some(10))));
+        assert_eq!(items[0], &Value::Integer(Some(10)));
         assert_eq!(items[1], &Value::String(Some(String::from("x"))));
         assert_eq!(items[2], &Value::String(Some(String::from("y"))));
-        assert!(matches!(items[3], Value::Integer(Some(20))));
-        assert!(matches!(items[4], Value::Integer(Some(30))));
-        assert!(matches!(items[5], Value::Integer(Some(40))));
-        assert!(matches!(items[6], Value::Integer(Some(50))));
-        assert!(matches!(items[7], Value::String(None)));
+        assert_eq!(items[3], &Value::Integer(Some(20)));
+        assert_eq!(items[4], &Value::Integer(Some(30)));
+        assert_eq!(items[5], &Value::Integer(Some(40)));
+        assert_eq!(items[6], &Value::Integer(Some(50)));
+        assert_eq!(items[7], &Value::String(None));
     }
 }
