@@ -160,7 +160,10 @@ impl<'a> Iterator for DepthFirstValueIterator<'a> {
                 Value::List(values) => {
                     self.stack.extend(values.iter().rev());
                 }
-                Value::Struct(fields) => self.stack.extend(fields.iter().rev().map(|(_, v)| v)),
+                Value::Struct(fields) => {
+                    self.stack.extend(fields.iter().rev().map(|(_, v)| v));
+                    return Some(value);
+                }
             }
         }
         None
