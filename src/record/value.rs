@@ -467,51 +467,116 @@ mod tests {
     }
 
     #[test]
-    fn test_dfs_primitive_values() {
-        let actual = Value::Boolean(Some(true))
-            .iter_depth_first()
-            .collect::<Vec<&Value>>();
+    fn test_depth_first_primitives() {
+        let value = Value::from(true);
+        let items = value.iter_depth_first().collect::<Vec<_>>();
 
-        assert_eq!(actual, vec![&Value::Boolean(Some(true))]);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items, vec![&Value::Boolean(Some(true))]);
+
+        let value = Value::from(100);
+        let items = value.iter_depth_first().collect::<Vec<_>>();
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items, vec![&Value::Integer(Some(100))]);
+
+        let value = Value::from("hello");
+        let items = value.iter_depth_first().collect::<Vec<_>>();
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items, vec![&Value::String(Some(String::from("hello")))]);
     }
 
     #[test]
-    fn test_dfs_list() {
+    fn test_depth_first_empty_list() {
+        let value = Value::List(vec![]);
+        let items = value.iter_depth_first().collect::<Vec<_>>();
+
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0], Value::List(_)));
+    }
+    #[test]
+    fn test_depth_first_list() {
         let value = Value::List(vec![
             Value::Boolean(Some(true)),
             Value::Boolean(Some(false)),
             Value::Boolean(None),
         ]);
+        let items = value.iter_depth_first().collect::<Vec<&Value>>();
 
-        let actual = value.iter_depth_first().collect::<Vec<&Value>>();
-
-        assert_eq!(
-            actual,
-            vec![
-                &Value::Boolean(Some(true)),
-                &Value::Boolean(Some(false)),
-                &Value::Boolean(None)
-            ]
-        );
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0], Value::List(_)));
+        assert!(matches!(items[1], Value::Boolean(Some(true))));
+        assert!(matches!(items[2], Value::Boolean(Some(false))));
+        assert!(matches!(items[3], Value::Boolean(None)));
     }
 
     #[test]
-    fn test_dfs_struct() {
+    fn test_depth_first_empty_struct() {
+        let value = Value::Struct(vec![]);
+        let items = value.iter_depth_first().collect::<Vec<_>>();
+
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0], Value::Struct(_)));
+    }
+
+    #[test]
+    fn test_depth_first_struct() {
         let value = Value::Struct(vec![
             ("name".to_string(), Value::String(None)),
             ("age".to_string(), Value::Integer(None)),
             ("active".to_string(), Value::Boolean(None)),
         ]);
+        let items = value.iter_depth_first().collect::<Vec<&Value>>();
 
-        let actual = value.iter_depth_first().collect::<Vec<&Value>>();
+        assert_eq!(items.len(), 4);
+        assert!(matches!(items[0], Value::Struct(_)));
+        assert!(matches!(items[1], Value::String(None)));
+        assert!(matches!(items[2], Value::Integer(None)));
+        assert!(matches!(items[3], Value::Boolean(None)));
+    }
 
-        assert_eq!(
-            actual,
-            vec![
-                &Value::String(None),
-                &Value::Integer(None),
-                &Value::Boolean(None)
-            ]
-        );
+    #[test]
+    fn test_depth_first_nested_struct() {
+        let value = Value::Struct(vec![
+            ("a".to_string(), Value::Integer(Some(10))),
+            (
+                "b".to_string(),
+                Value::List(vec![
+                    Value::String(Some(String::from("x"))),
+                    Value::String(Some(String::from("y"))),
+                ]),
+            ),
+            (
+                "c".to_string(),
+                Value::Struct(vec![
+                    (
+                        "p".to_string(),
+                        Value::List(vec![Value::Integer(Some(20)), Value::Integer(Some(30))]),
+                    ),
+                    (
+                        "q".to_string(),
+                        Value::List(vec![Value::Integer(Some(40)), Value::Integer(Some(50))]),
+                    ),
+                ]),
+            ),
+            ("d".to_string(), Value::String(None)),
+        ]);
+        let items = value.iter_depth_first().collect::<Vec<&Value>>();
+
+        assert_eq!(items.len(), 13);
+        assert!(matches!(items[1], Value::Struct(_)));
+        assert!(matches!(items[2], Value::Integer(Some(10))));
+        assert!(matches!(items[3], Value::List(_)));
+        assert_eq!(items[4], &Value::String(Some(String::from("x"))));
+        assert_eq!(items[5], &Value::String(Some(String::from("y"))));
+        assert!(matches!(items[6], Value::Struct(_)));
+        assert!(matches!(items[7], Value::List(_)));
+        assert!(matches!(items[8], Value::Integer(Some(20))));
+        assert!(matches!(items[9], Value::Integer(Some(30))));
+        assert!(matches!(items[10], Value::List(_)));
+        assert!(matches!(items[11], Value::Integer(Some(40))));
+        assert!(matches!(items[12], Value::Integer(Some(50))));
+        assert!(matches!(items[13], Value::String(None)));
     }
 }
