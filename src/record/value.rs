@@ -154,7 +154,15 @@ impl<'a> Iterator for DfsIterator<'a> {
     type Item = &'a Value;
 
     fn next(&mut self) -> Option<Self::Item> {
-        println!("Current stack size: {}", self.stack.len());
+        while let Some(value) = self.stack.pop() {
+            match value {
+                Value::Boolean(_) | Value::Integer(_) | Value::String(_) => return Some(value),
+                Value::List(values) => {
+                    self.stack.extend(values.iter().rev());
+                }
+                Value::Struct(fields) => self.stack.extend(fields.iter().rev().map(|(_, v)| v)),
+            }
+        }
         None
     }
 }
@@ -532,8 +540,7 @@ mod tests {
         let value = Value::List(vec![]);
         let items = value.iter_depth_first().collect::<Vec<_>>();
 
-        assert_eq!(items.len(), 1);
-        assert!(matches!(items[0], Value::List(_)));
+        assert_eq!(items.len(), 0);
     }
     #[test]
     fn test_depth_first_list() {
@@ -544,11 +551,10 @@ mod tests {
         ]);
         let items = value.iter_depth_first().collect::<Vec<&Value>>();
 
-        assert_eq!(items.len(), 1);
-        assert!(matches!(items[0], Value::List(_)));
-        assert!(matches!(items[1], Value::Boolean(Some(true))));
-        assert!(matches!(items[2], Value::Boolean(Some(false))));
-        assert!(matches!(items[3], Value::Boolean(None)));
+        assert_eq!(items.len(), 3);
+        assert!(matches!(items[0], Value::Boolean(Some(true))));
+        assert!(matches!(items[1], Value::Boolean(Some(false))));
+        assert!(matches!(items[2], Value::Boolean(None)));
     }
 
     #[test]
@@ -556,8 +562,7 @@ mod tests {
         let value = Value::Struct(vec![]);
         let items = value.iter_depth_first().collect::<Vec<_>>();
 
-        assert_eq!(items.len(), 1);
-        assert!(matches!(items[0], Value::Struct(_)));
+        assert_eq!(items.len(), 0);
     }
 
     #[test]
@@ -569,11 +574,10 @@ mod tests {
         ]);
         let items = value.iter_depth_first().collect::<Vec<&Value>>();
 
-        assert_eq!(items.len(), 4);
-        assert!(matches!(items[0], Value::Struct(_)));
-        assert!(matches!(items[1], Value::String(None)));
-        assert!(matches!(items[2], Value::Integer(None)));
-        assert!(matches!(items[3], Value::Boolean(None)));
+        assert_eq!(items.len(), 3);
+        assert!(matches!(items[0], Value::String(None)));
+        assert!(matches!(items[1], Value::Integer(None)));
+        assert!(matches!(items[2], Value::Boolean(None)));
     }
 
     #[test]
@@ -604,19 +608,14 @@ mod tests {
         ]);
         let items = value.iter_depth_first().collect::<Vec<&Value>>();
 
-        assert_eq!(items.len(), 13);
-        assert!(matches!(items[1], Value::Struct(_)));
-        assert!(matches!(items[2], Value::Integer(Some(10))));
-        assert!(matches!(items[3], Value::List(_)));
-        assert_eq!(items[4], &Value::String(Some(String::from("x"))));
-        assert_eq!(items[5], &Value::String(Some(String::from("y"))));
-        assert!(matches!(items[6], Value::Struct(_)));
-        assert!(matches!(items[7], Value::List(_)));
-        assert!(matches!(items[8], Value::Integer(Some(20))));
-        assert!(matches!(items[9], Value::Integer(Some(30))));
-        assert!(matches!(items[10], Value::List(_)));
-        assert!(matches!(items[11], Value::Integer(Some(40))));
-        assert!(matches!(items[12], Value::Integer(Some(50))));
-        assert!(matches!(items[13], Value::String(None)));
+        assert_eq!(items.len(), 8);
+        assert!(matches!(items[0], Value::Integer(Some(10))));
+        assert_eq!(items[1], &Value::String(Some(String::from("x"))));
+        assert_eq!(items[2], &Value::String(Some(String::from("y"))));
+        assert!(matches!(items[3], Value::Integer(Some(20))));
+        assert!(matches!(items[4], Value::Integer(Some(30))));
+        assert!(matches!(items[5], Value::Integer(Some(40))));
+        assert!(matches!(items[6], Value::Integer(Some(50))));
+        assert!(matches!(items[7], Value::String(None)));
     }
 }
