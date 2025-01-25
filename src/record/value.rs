@@ -562,7 +562,8 @@ mod tests {
         let value = Value::Struct(vec![]);
         let items = value.iter_depth_first().collect::<Vec<_>>();
 
-        assert_eq!(items.len(), 0);
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0], Value::Struct(_)));
     }
 
     #[test]
@@ -574,10 +575,11 @@ mod tests {
         ]);
         let items = value.iter_depth_first().collect::<Vec<&Value>>();
 
-        assert_eq!(items.len(), 3);
-        assert_eq!(items[0], &Value::String(None));
-        assert_eq!(items[1], &Value::Integer(None));
-        assert_eq!(items[2], &Value::Boolean(None));
+        assert_eq!(items.len(), 4);
+        assert!(matches!(items[0], Value::Struct(_)));
+        assert_eq!(items[1], &Value::String(None));
+        assert_eq!(items[2], &Value::Integer(None));
+        assert_eq!(items[3], &Value::Boolean(None));
     }
 
     #[test]
@@ -608,14 +610,41 @@ mod tests {
         ]);
         let items = value.iter_depth_first().collect::<Vec<&Value>>();
 
+        assert_eq!(items.len(), 10);
+        assert!(matches!(items[0], Value::Struct(_)));
+        assert_eq!(items[1], &Value::Integer(Some(10)));
+        assert_eq!(items[2], &Value::String(Some(String::from("x"))));
+        assert_eq!(items[3], &Value::String(Some(String::from("y"))));
+        assert!(matches!(items[4], Value::Struct(_)));
+        assert_eq!(items[5], &Value::Integer(Some(20)));
+        assert_eq!(items[6], &Value::Integer(Some(30)));
+        assert_eq!(items[7], &Value::Integer(Some(40)));
+        assert_eq!(items[8], &Value::Integer(Some(50)));
+        assert_eq!(items[9], &Value::String(None));
+    }
+
+    #[test]
+    fn test_depth_first_repeated_structs() {
+        let value = Value::List(vec![
+            Value::Struct(vec![
+                ("x".to_string(), Value::Integer(Some(10))),
+                ("y".to_string(), Value::Integer(Some(20))),
+            ]),
+            Value::Struct(vec![("x".to_string(), Value::Integer(Some(30)))]),
+            Value::Struct(vec![("y".to_string(), Value::Integer(Some(40)))]),
+            Value::Struct(vec![]),
+        ]);
+        let items = value.iter_depth_first().collect::<Vec<&Value>>();
+
         assert_eq!(items.len(), 8);
-        assert_eq!(items[0], &Value::Integer(Some(10)));
-        assert_eq!(items[1], &Value::String(Some(String::from("x"))));
-        assert_eq!(items[2], &Value::String(Some(String::from("y"))));
-        assert_eq!(items[3], &Value::Integer(Some(20)));
+        assert!(matches!(items[0], Value::Struct(_)));
+        assert!(matches!(items[3], Value::Struct(_)));
+        assert!(matches!(items[5], Value::Struct(_)));
+        assert!(matches!(items[7], Value::Struct(_)));
+
+        assert_eq!(items[1], &Value::Integer(Some(10)));
+        assert_eq!(items[2], &Value::Integer(Some(20)));
         assert_eq!(items[4], &Value::Integer(Some(30)));
-        assert_eq!(items[5], &Value::Integer(Some(40)));
-        assert_eq!(items[6], &Value::Integer(Some(50)));
-        assert_eq!(items[7], &Value::String(None));
+        assert_eq!(items[6], &Value::Integer(Some(40)));
     }
 }
