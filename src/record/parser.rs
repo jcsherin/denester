@@ -1,7 +1,8 @@
+use crate::record::field_path::{FieldPath, PathMetadata};
+use crate::record::DataType;
 use std::borrow::Cow;
 use std::error::Error;
-use crate::record::DataType;
-use crate::record::field_path::{FieldPath, PathMetadata};
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum ParseError<'a> {
@@ -35,4 +36,17 @@ pub enum ParseError<'a> {
     },
 }
 
+impl<'a> Display for ParseError<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+impl<'a> Error for ParseError<'a> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ParseError::Other { source, .. } => source.as_deref(),
+            _ => None,
+        }
+    }
 }
