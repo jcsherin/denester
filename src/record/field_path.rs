@@ -1,4 +1,5 @@
 use crate::record::{DataType, Field, Schema};
+use std::fmt::{write, Display, Formatter};
 
 #[derive(Debug)]
 pub struct FieldPath<'a> {
@@ -17,6 +18,12 @@ impl<'a> FieldPath<'a> {
 
     pub fn path(&self) -> &[String] {
         &self.path
+    }
+}
+
+impl<'a> Display for FieldPath<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "path: {} field:{}", self.path.join("."), self.field)
     }
 }
 
@@ -172,6 +179,19 @@ impl<'a> PathMetadata<'a> {
         }
 
         (definition_level, repetition_level)
+    }
+}
+
+impl<'a> Display for PathMetadata<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} {} max_def: {} max_rep: {}",
+            self.path.join(""),
+            self.field,
+            self.definition_level,
+            self.repetition_level
+        )
     }
 }
 
