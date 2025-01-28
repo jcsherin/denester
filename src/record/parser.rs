@@ -1,6 +1,6 @@
 use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
 use crate::record::value::DepthFirstValueIterator;
-use crate::record::{DataType, Schema, Value};
+use crate::record::{DataType, Schema};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error;
