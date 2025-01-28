@@ -1,6 +1,8 @@
-use crate::record::field_path::{FieldPath, PathMetadata};
-use crate::record::DataType;
+use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
+use crate::record::value::DepthFirstValueIterator;
+use crate::record::{DataType, Schema, Value};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
@@ -104,6 +106,34 @@ impl<'a> Error for ParseError<'a> {
         match self {
             ParseError::Other { source, .. } => source.as_deref(),
             _ => None,
+        }
+    }
+}
+
+pub struct ValueParser<'a> {
+    schema: &'a Schema,
+    path_metadata_map: HashMap<Vec<String>, PathMetadata<'a>>,
+    value_iter: DepthFirstValueIterator<'a>,
+    current_path: Vec<String>,
+}
+
+impl<'a> ValueParser<'a> {
+    fn new(schema: &'a Schema, value_iter: DepthFirstValueIterator<'a>) -> Self {
+        let path_metadata_map = PathMetadataIterator::new(schema)
+            .map(|path_metadata| (path_metadata.path().to_vec(), path_metadata))
+            .collect();
+        Self {
+            schema,
+            path_metadata_map,
+            value_iter,
+            current_path: Vec::new(),
+        }
+    }
+
+    fn update_current_path(&mut self, value: &Value) {
+        if let Value::Struct(fields) = value {
+            self.current_path
+                .extend(fields.iter().map(|(name, _)| name.clone()));
         }
     }
 }

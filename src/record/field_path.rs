@@ -1,5 +1,5 @@
 use crate::record::{DataType, Field, Schema};
-use std::fmt::{write, Display, Formatter};
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub struct FieldPath<'a> {
@@ -136,6 +136,10 @@ impl<'a> PathMetadata<'a> {
             definition_level,
             repetition_level,
         }
+    }
+
+    pub fn path(&self) -> &[String] {
+        &self.path
     }
 
     fn compute_levels(schema: &Schema, field_path: &FieldPath) -> (u8, u8) {
