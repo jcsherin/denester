@@ -114,7 +114,8 @@ pub struct ValueParser<'a> {
     schema: &'a Schema,
     path_metadata_map: HashMap<Vec<String>, PathMetadata<'a>>,
     value_iter: DepthFirstValueIterator<'a>,
-    current_path: Vec<String>,
+    current_definition_level: u8,
+    previous_repetition_level: u8,
 }
 
 impl<'a> ValueParser<'a> {
@@ -126,14 +127,8 @@ impl<'a> ValueParser<'a> {
             schema,
             path_metadata_map,
             value_iter,
-            current_path: Vec::new(),
-        }
-    }
-
-    fn update_current_path(&mut self, value: &Value) {
-        if let Value::Struct(fields) = value {
-            self.current_path
-                .extend(fields.iter().map(|(name, _)| name.clone()));
+            current_definition_level: 0,
+            previous_repetition_level: 0,
         }
     }
 }
