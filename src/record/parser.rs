@@ -1,6 +1,6 @@
 use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
 use crate::record::value::DepthFirstValueIterator;
-use crate::record::{DataType, Schema, Value};
+use crate::record::{DataType, Field, Schema, Value};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error;
@@ -200,6 +200,20 @@ impl<'a> ValueParser<'a> {
             value_iter,
             current_definition_level: 0,
             previous_repetition_level: 0,
+        }
+    }
+
+    fn compute_definition_level(&mut self, field: &Field) -> u8 {
+        // Increment level for repeated fields
+        if matches!(field.data_type(), DataType::List(_)) {
+            return self.current_definition_level + 1;
+        }
+
+        // Increment level for optional fields
+        if field.is_nullable() {
+            self.current_definition_level + 1
+        } else {
+            self.current_definition_level
         }
     }
 }
