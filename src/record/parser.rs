@@ -181,12 +181,23 @@ DepthFirstValueIterator { Item = &Value }
         - the node is not returned, but contents are added to the internal stack
 ```
 */
+
+type DefinitionLevel = u8;
+type RepetitionLevel = u8;
+type RepetitionDepth = u8;
+
+#[derive(Default)]
+struct LevelContext {
+    definition_level: DefinitionLevel,
+    repetition_depth: RepetitionDepth,
+    repetition_level: RepetitionLevel,
+}
+
 pub struct ValueParser<'a> {
     schema: &'a Schema,
     path_metadata_map: HashMap<Vec<String>, PathMetadata<'a>>,
     value_iter: DepthFirstValueIterator<'a>,
-    current_definition_level: u8,
-    previous_repetition_level: u8,
+    level_context: LevelContext,
 }
 
 impl<'a> ValueParser<'a> {
@@ -198,30 +209,23 @@ impl<'a> ValueParser<'a> {
             schema,
             path_metadata_map,
             value_iter,
-            current_definition_level: 0,
-            previous_repetition_level: 0,
+            level_context: Default::default(),
         }
     }
 
-    fn compute_definition_level(&mut self, field: &Field) -> u8 {
-        // Increment level for repeated fields
-        if matches!(field.data_type(), DataType::List(_)) {
-            return self.current_definition_level + 1;
-        }
-
-        // Increment level for optional fields
-        if field.is_nullable() {
-            self.current_definition_level + 1
-        } else {
-            self.current_definition_level
-        }
+    fn compute_definition_level(
+        level_context: LevelContext,
+        field: &Field,
+    ) -> DefinitionLevel {
+        let increment = DefinitionLevel::from(matches!(field.data_type(), DataType::List(_)) || field.is_nullable());
+        level_context.definition_level + increment
     }
 }
 
 pub struct StripedColumnValue {
     value: Value,
-    repetition_level: u8,
-    definition_level: u8,
+    repetition_level: RepetitionLevel,
+    definition_level: DefinitionLevel,
 }
 
 type StripedColumnResult<'a> = Result<StripedColumnValue, ParseError<'a>>;
