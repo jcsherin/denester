@@ -228,17 +228,65 @@ type StripedColumnResult<'a> = Result<StripedColumnValue, ParseError<'a>>;
 impl<'a> Iterator for ValueParser<'a> {
     type Item = StripedColumnResult<'a>;
 
+    /**
+    Iterate through the Value in depth-first order and when we reach the leaf
+    node emit a StripedColumnValue.
+
+    The schema is used to verify that the Value has the same path structure
+    as defined. The type of each Value node is verified against the field
+    definition in the schema (required | optional | repeated).
+
+    If the value cannot be parsed abort processing and return a meaningful
+    error message. (strict mode)
+
+    If a path contains repeated or optional fields, the path may terminate
+    before reaching the leaf node. In this case we return NULL as the value
+    in StripedColumnValue.
+
+    During Value traversal we maintain the definition level state. It is
+    incremented whenever we read a Value node which is defined as either
+    optional or repeated in the schema.
+
+    The repetition level state is trickier. We track both the depth and
+    the repetition level for repeated Values. Here depth does not mean
+    the depth of a Value node in the tree, rather it is the repetition
+    depth. The repetition level for each Value node can be computed using
+    the previous (depth, repetition level) values.
+        - The first item is a special case. The computed repetition level
+        will be same as the repetition level of its parent.
+        - For the remaining items the repetition level is same as the
+        repetition depth of its parent.
+        - For an empty list the computed repetition level will be same
+        as the repetition level of its parent.
+
+    The PathMetadata is a precomputed struct which contains the maximum
+    possible values for definition levels and repetition levels for a
+    given path. This allows us to implement bounds checking for computed
+    level values:
+        - The computed levels should not exceed the max value
+        - The repetition level should not exceed definition level
+        - The definition level begins at 1
+        - The repetition level begins at 0
+
+    Algorithm:
+        for each (Value, PathVector) in DepthFirstValueIterator
+            compute levels and update state:
+                compute definition levels
+                compute repetition levels
+            validate Value:
+                check datatype matches                  # type error
+                check nullable matches                  # required/optional
+                check name matches (only struct fields) # path error
+                check bounds:
+                    is within max definition level
+                    is within max repetition level
+                    is repetition level < definition level
+            if primitive value
+                return Ok(StripedColumnValue::new(value, rep, def))
+            else    # early path termination
+                return Ok(StripedColumnValue::new(null_value, rep, def))
+    */
     fn next(&mut self) -> Option<Self::Item> {
         todo!()
-        // for (value, path_vector) in value_iter
-        //      validate value against schema using path_vector
-        //          abort if parse error
-        //      compute definition & repetition levels
-        //      validate levels are within known bounds using path_metadata
-        //
-        //      if node matches leaf field described in path_metadata
-        //          emit StripedColumnValue
-        //      else path is missing or terminated early
-        //          emit NULL StripedColumnValue
     }
 }
