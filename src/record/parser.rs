@@ -193,6 +193,20 @@ struct LevelContext {
     repetition_level: RepetitionLevel,
 }
 
+impl LevelContext {
+    fn with_field(&self, field: &Field) -> Self {
+        let increment = DefinitionLevel::from(
+            matches!(field.data_type(), DataType::List(_)) || field.is_nullable(),
+        );
+
+        Self {
+            definition_level: self.definition_level + increment,
+            repetition_depth: self.repetition_depth,
+            repetition_level: self.repetition_level,
+        }
+    }
+}
+
 pub struct ValueParser<'a> {
     schema: &'a Schema,
     path_metadata_map: HashMap<Vec<String>, PathMetadata<'a>>,
@@ -211,14 +225,6 @@ impl<'a> ValueParser<'a> {
             value_iter,
             level_context: Default::default(),
         }
-    }
-
-    fn compute_definition_level(
-        level_context: LevelContext,
-        field: &Field,
-    ) -> DefinitionLevel {
-        let increment = DefinitionLevel::from(matches!(field.data_type(), DataType::List(_)) || field.is_nullable());
-        level_context.definition_level + increment
     }
 }
 
