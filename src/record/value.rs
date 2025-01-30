@@ -163,9 +163,10 @@ impl<'a> Iterator for DepthFirstValueIterator<'a> {
                     return Some((value, current_path))
                 }
                 Value::List(values) => {
-                    for value in values.iter().rev() {
-                        self.stack.push((value, current_path.clone()))
+                    for item in values.iter().rev() {
+                        self.stack.push((item, current_path.clone()))
                     }
+                    return Some((value, current_path));
                 }
                 Value::Struct(fields) => {
                     for (key, value) in fields.iter().rev() {
@@ -557,7 +558,8 @@ mod tests {
         let value = Value::List(vec![]);
         let items = value.iter_depth_first().collect::<Vec<_>>();
 
-        assert_eq!(items.len(), 0);
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0].0, &Value::List(_)), "empty list node");
     }
     #[test]
     fn test_depth_first_list() {
@@ -568,14 +570,16 @@ mod tests {
         ]);
         let items = value.iter_depth_first().collect::<Vec<_>>();
 
-        assert_eq!(items.len(), 3);
-        assert_eq!(items[0].0, &Value::Boolean(Some(true)));
-        assert_eq!(items[1].0, &Value::Boolean(Some(false)));
-        assert_eq!(items[2].0, &Value::Boolean(None));
+        assert_eq!(items.len(), 4);
+        assert!(matches!(items[0].0, &Value::List(_)));
+        assert_eq!(items[1].0, &Value::Boolean(Some(true)));
+        assert_eq!(items[2].0, &Value::Boolean(Some(false)));
+        assert_eq!(items[3].0, &Value::Boolean(None));
 
         assert_eq!(items[0].1, PathVector::default());
         assert_eq!(items[1].1, PathVector::default());
         assert_eq!(items[2].1, PathVector::default());
+        assert_eq!(items[3].1, PathVector::default());
     }
 
     #[test]
@@ -639,7 +643,7 @@ mod tests {
         ]);
         let items = value.iter_depth_first().collect::<Vec<_>>();
 
-        assert_eq!(items.len(), 10);
+        assert_eq!(items.len(), 13);
 
         assert!(matches!(items[0].0, Value::Struct(_)));
         assert_eq!(items[0].1, PathVector::default());
@@ -647,26 +651,29 @@ mod tests {
         assert_eq!(items[1].0, &Value::Integer(Some(10)));
         assert_eq!(items[1].1, vec!["a".to_string()]);
 
-        assert_eq!(items[2].0, &Value::String(Some(String::from("x"))));
-        assert_eq!(items[3].0, &Value::String(Some(String::from("y"))));
-        assert_eq!(items[2].1, vec!["b".to_string()]);
+        assert!(matches!(items[2].0, Value::List(_)));
+        assert_eq!(items[3].0, &Value::String(Some(String::from("x"))));
+        assert_eq!(items[4].0, &Value::String(Some(String::from("y"))));
         assert_eq!(items[3].1, vec!["b".to_string()]);
+        assert_eq!(items[4].1, vec!["b".to_string()]);
 
-        assert!(matches!(items[4].0, Value::Struct(_)));
-        assert_eq!(items[4].1, vec!["c".to_string()]);
+        assert!(matches!(items[5].0, Value::Struct(_)));
+        assert_eq!(items[5].1, vec!["c".to_string()]);
 
-        assert_eq!(items[5].0, &Value::Integer(Some(20)));
-        assert_eq!(items[6].0, &Value::Integer(Some(30)));
-        assert_eq!(items[5].1, vec!["c".to_string(), "p".to_string()]);
-        assert_eq!(items[6].1, vec!["c".to_string(), "p".to_string()]);
+        assert!(matches!(items[6].0, Value::List(_)));
+        assert_eq!(items[7].0, &Value::Integer(Some(20)));
+        assert_eq!(items[8].0, &Value::Integer(Some(30)));
+        assert_eq!(items[7].1, vec!["c".to_string(), "p".to_string()]);
+        assert_eq!(items[8].1, vec!["c".to_string(), "p".to_string()]);
 
-        assert_eq!(items[7].0, &Value::Integer(Some(40)));
-        assert_eq!(items[8].0, &Value::Integer(Some(50)));
-        assert_eq!(items[7].1, vec!["c".to_string(), "q".to_string()]);
-        assert_eq!(items[8].1, vec!["c".to_string(), "q".to_string()]);
+        assert!(matches!(items[9].0, Value::List(_)));
+        assert_eq!(items[10].0, &Value::Integer(Some(40)));
+        assert_eq!(items[11].0, &Value::Integer(Some(50)));
+        assert_eq!(items[10].1, vec!["c".to_string(), "q".to_string()]);
+        assert_eq!(items[11].1, vec!["c".to_string(), "q".to_string()]);
 
-        assert_eq!(items[9].0, &Value::String(None));
-        assert_eq!(items[9].1, vec!["d".to_string()]);
+        assert_eq!(items[12].0, &Value::String(None));
+        assert_eq!(items[12].1, vec!["d".to_string()]);
     }
 
     #[test]
@@ -682,25 +689,27 @@ mod tests {
         ]);
         let items = value.iter_depth_first().collect::<Vec<_>>();
 
-        assert_eq!(items.len(), 8);
-        assert!(matches!(items[0].0, Value::Struct(_)));
-        assert!(matches!(items[3].0, Value::Struct(_)));
-        assert!(matches!(items[5].0, Value::Struct(_)));
-        assert!(matches!(items[7].0, Value::Struct(_)));
+        assert_eq!(items.len(), 9);
+        assert!(matches!(items[0].0, Value::List(_)));
+        assert!(matches!(items[1].0, Value::Struct(_)));
+        assert!(matches!(items[4].0, Value::Struct(_)));
+        assert!(matches!(items[6].0, Value::Struct(_)));
+        assert!(matches!(items[8].0, Value::Struct(_)));
 
         assert_eq!(items[0].1, PathVector::default());
-        assert_eq!(items[3].1, PathVector::default());
-        assert_eq!(items[5].1, PathVector::default());
-        assert_eq!(items[7].1, PathVector::default());
+        assert_eq!(items[1].1, PathVector::default());
+        assert_eq!(items[4].1, PathVector::default());
+        assert_eq!(items[6].1, PathVector::default());
+        assert_eq!(items[8].1, PathVector::default());
 
-        assert_eq!(items[1].0, &Value::Integer(Some(10)));
-        assert_eq!(items[2].0, &Value::Integer(Some(20)));
-        assert_eq!(items[4].0, &Value::Integer(Some(30)));
-        assert_eq!(items[6].0, &Value::Integer(Some(40)));
+        assert_eq!(items[2].0, &Value::Integer(Some(10)));
+        assert_eq!(items[3].0, &Value::Integer(Some(20)));
+        assert_eq!(items[5].0, &Value::Integer(Some(30)));
+        assert_eq!(items[7].0, &Value::Integer(Some(40)));
 
-        assert_eq!(items[1].1, vec!["x".to_string()]);
-        assert_eq!(items[2].1, vec!["y".to_string()]);
-        assert_eq!(items[4].1, vec!["x".to_string()]);
-        assert_eq!(items[6].1, vec!["y".to_string()]);
+        assert_eq!(items[2].1, vec!["x".to_string()]);
+        assert_eq!(items[3].1, vec!["y".to_string()]);
+        assert_eq!(items[5].1, vec!["x".to_string()]);
+        assert_eq!(items[7].1, vec!["y".to_string()]);
     }
 }
