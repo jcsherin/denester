@@ -300,3 +300,63 @@ impl<'a> Iterator for ValueParser<'a> {
         todo!()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::record::schema::{bool, integer, repeated_integer, string};
+    use crate::record::value::ValueBuilder;
+    use crate::record::SchemaBuilder;
+
+    #[test]
+    fn test_simple_struct() {
+        let schema = SchemaBuilder::new(
+            "user",
+            vec![
+                string("name"),
+                integer("id"),
+                bool("enrolled"),
+                repeated_integer("groups"),
+            ],
+        )
+        .build();
+
+        let value = ValueBuilder::new()
+            .field("name", "Patricia")
+            .field("id", 1001)
+            .field("enrolled", true)
+            .field("groups", vec![1, 2, 3])
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 4);
+
+        assert_eq!(parsed[0].value, Value::String(Some("Patricia".to_string())));
+        assert_eq!(parsed[0].definition_level, 0);
+        assert_eq!(parsed[0].repetition_level, 0);
+
+        assert_eq!(parsed[1].value, Value::Integer(Some(1001)));
+        assert_eq!(parsed[1].definition_level, 0);
+        assert_eq!(parsed[1].repetition_level, 0);
+
+        assert_eq!(parsed[2].value, Value::Boolean(Some(true)));
+        assert_eq!(parsed[2].definition_level, 0);
+        assert_eq!(parsed[2].repetition_level, 0);
+
+        assert_eq!(
+            parsed[3].value,
+            Value::List(vec![
+                Value::Integer(Some(1)),
+                Value::Integer(Some(2)),
+                Value::Integer(Some(3))
+            ])
+        );
+        assert_eq!(parsed[3].definition_level, 0);
+        assert_eq!(parsed[3].repetition_level, 0);
+    }
+}
