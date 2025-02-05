@@ -304,9 +304,60 @@ impl<'a> Iterator for ValueParser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::record::schema::{bool, integer, repeated_integer, string};
+    use crate::record::schema::{bool, integer, optional_integer, repeated_integer, string};
     use crate::record::value::ValueBuilder;
     use crate::record::SchemaBuilder;
+
+    #[test]
+    fn test_optional_field_is_null() {
+        let schema = SchemaBuilder::new("optional_field", vec![optional_integer("x")]).build();
+        let value = ValueBuilder::new().optional_integer("x", None).build();
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 1);
+
+        assert_eq!(parsed[0].value, Value::Integer(None));
+        assert_eq!(parsed[0].definition_level, 1);
+        assert_eq!(parsed[0].repetition_level, 0);
+    }
+
+    #[test]
+    fn test_optional_field_is_missing() {
+        let schema = SchemaBuilder::new("optional_field", vec![optional_integer("x")]).build();
+        let value = ValueBuilder::new().build();
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 1);
+
+        assert_eq!(parsed[0].value, Value::Integer(None));
+        assert_eq!(parsed[0].definition_level, 0); // missing field
+        assert_eq!(parsed[0].repetition_level, 0);
+    }
+
+    #[test]
+    fn test_optional_field_is_present() {
+        let schema = SchemaBuilder::new("optional_field", vec![optional_integer("x")]).build();
+        let value = ValueBuilder::new().optional_integer("x", Some(10)).build();
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 1);
+
+        assert_eq!(parsed[0].value, Value::Integer(Some(10)));
+        assert_eq!(parsed[0].definition_level, 1);
+        assert_eq!(parsed[0].repetition_level, 0);
+    }
 
     #[test]
     fn test_simple_struct() {
