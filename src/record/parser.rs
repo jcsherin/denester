@@ -360,6 +360,48 @@ mod tests {
     }
 
     #[test]
+    fn test_required_field_contains_value() {
+        let schema = SchemaBuilder::new("required_field", vec![integer("x")]).build();
+        let value = ValueBuilder::new().field("x", 10).build();
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 1);
+
+        assert_eq!(parsed[0].value, Value::Integer(Some(10)));
+        assert_eq!(parsed[0].definition_level, 0);
+        assert_eq!(parsed[0].repetition_level, 0);
+    }
+
+    #[test]
+    fn test_required_field_is_missing() {
+        let schema = SchemaBuilder::new("required_field", vec![integer("x")]).build();
+        let value = ValueBuilder::new().build();
+        let mut parser = ValueParser::new(&schema, value.iter_depth_first());
+
+        assert!(matches!(parser.next().unwrap(),
+                Err(ParseError::RequiredFieldIsMissing { field_path })
+                if field_path.path() == &["x"] && field_path.field() == &integer("x")),);
+        assert!(parser.next().is_none());
+    }
+
+    #[test]
+    fn test_required_field_contains_null() {
+        let schema = SchemaBuilder::new("required_field", vec![integer("x")]).build();
+        let value = ValueBuilder::new().field("x", Value::Integer(None)).build();
+        let mut parser = ValueParser::new(&schema, value.iter_depth_first());
+
+        assert!(matches!(parser.next().unwrap(),
+            Err(ParseError::RequiredFieldIsNull { field_path })
+            if field_path.path() == &["x"] && field_path.field() == &integer("x")
+        ));
+        assert!(parser.next().is_none());
+    }
+
+    #[test]
     fn test_simple_struct() {
         let schema = SchemaBuilder::new(
             "user",
