@@ -309,7 +309,7 @@ mod tests {
     use crate::record::SchemaBuilder;
 
     #[test]
-    fn test_optional_field_is_null() {
+    fn test_optional_field_contains_null() {
         let schema = SchemaBuilder::new("optional_field", vec![optional_integer("x")]).build();
         let value = ValueBuilder::new().optional_integer("x", None).build();
         let parser = ValueParser::new(&schema, value.iter_depth_first());
@@ -343,7 +343,7 @@ mod tests {
     }
 
     #[test]
-    fn test_optional_field_is_present() {
+    fn test_optional_field_contains_value() {
         let schema = SchemaBuilder::new("optional_field", vec![optional_integer("x")]).build();
         let value = ValueBuilder::new().optional_integer("x", Some(10)).build();
         let parser = ValueParser::new(&schema, value.iter_depth_first());
