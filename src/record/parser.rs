@@ -402,6 +402,91 @@ mod tests {
     }
 
     #[test]
+    fn test_repeated_field_is_empty() {
+        let schema = SchemaBuilder::new("repeated_field", vec![repeated_integer("xs")]).build();
+        let value = ValueBuilder::new()
+            .repeated("xs", Vec::<Value>::new())
+            .build();
+        let mut parser = ValueParser::new(&schema, value.iter_depth_first());
+
+        let item = parser.next().unwrap();
+        assert_eq!(item.as_ref().unwrap().value, Value::Integer(None));
+        assert_eq!(item.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item.as_ref().unwrap().repetition_level, 0);
+
+        assert!(parser.next().is_none());
+    }
+
+    #[test]
+    fn test_repeated_field_is_not_empty() {
+        let schema = SchemaBuilder::new("repeated_field", vec![repeated_integer("xs")]).build();
+        let value = ValueBuilder::new().repeated("xs", vec![1, 2, 3]).build();
+        let mut parser = ValueParser::new(&schema, value.iter_depth_first());
+
+        let item1 = parser.next().unwrap();
+        assert_eq!(item1.as_ref().unwrap().value, Value::Integer(Some(1)));
+        assert_eq!(item1.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item1.as_ref().unwrap().repetition_level, 0);
+
+        let item2 = parser.next().unwrap();
+        assert_eq!(item2.as_ref().unwrap().value, Value::Integer(Some(2)));
+        assert_eq!(item2.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item2.as_ref().unwrap().repetition_level, 0);
+
+        let item3 = parser.next().unwrap();
+        assert_eq!(item3.as_ref().unwrap().value, Value::Integer(Some(3)));
+        assert_eq!(item3.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item3.as_ref().unwrap().repetition_level, 0);
+
+        assert!(parser.next().is_none());
+    }
+
+    /// TODO: Is there a way to distinguish between the encoding of an `[]` vs `[null]`?
+    #[test]
+    fn test_repeated_field_contains_nulls() {
+        let schema = SchemaBuilder::new("repeated_field", vec![repeated_integer("xs")]).build();
+        let value = Value::Struct(vec![(
+            "xs".to_string(),
+            Value::List(vec![
+                Value::Integer(None),
+                Value::Integer(None),
+                Value::Integer(None),
+            ]),
+        )]);
+        let mut parser = ValueParser::new(&schema, value.iter_depth_first());
+
+        let item1 = parser.next().unwrap();
+        assert_eq!(item1.as_ref().unwrap().value, Value::Integer(None));
+        assert_eq!(item1.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item1.as_ref().unwrap().repetition_level, 0);
+
+        let item2 = parser.next().unwrap();
+        assert_eq!(item2.as_ref().unwrap().value, Value::Integer(None));
+        assert_eq!(item2.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item2.as_ref().unwrap().repetition_level, 0);
+
+        let item3 = parser.next().unwrap();
+        assert_eq!(item3.as_ref().unwrap().value, Value::Integer(None));
+        assert_eq!(item3.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item3.as_ref().unwrap().repetition_level, 0);
+
+        assert!(parser.next().is_none());
+    }
+    #[test]
+    fn test_repeated_field_is_missing() {
+        let schema = SchemaBuilder::new("repeated_field", vec![repeated_integer("xs")]).build();
+        let value = ValueBuilder::new().build();
+        let mut parser = ValueParser::new(&schema, value.iter_depth_first());
+
+        let item = parser.next().unwrap();
+        assert_eq!(item.as_ref().unwrap().value, Value::Integer(None));
+        assert_eq!(item.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item.as_ref().unwrap().repetition_level, 0);
+
+        assert!(parser.next().is_none());
+    }
+
+    #[test]
     fn test_simple_struct() {
         let schema = SchemaBuilder::new(
             "user",
