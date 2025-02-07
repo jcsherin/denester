@@ -1,4 +1,4 @@
-use crate::record::PathVector;
+use crate::record::{DataType, PathVector};
 use std::fmt;
 use std::fmt::Formatter;
 
@@ -149,6 +149,28 @@ impl Value {
     pub fn iter_depth_first(&self) -> DepthFirstValueIterator {
         DepthFirstValueIterator {
             stack: vec![(self, PathVector::default())],
+        }
+    }
+
+    /// Performs shallow type checking for a given value.
+    ///
+    /// For repeated values `Value::List(_)` the individual items in the list are not type checked.
+    /// Similarly, for records `Value::Struct(_)` the field names should match. The values are not
+    /// type checked.
+    pub fn matches_type_shallow(&self, data_type: &DataType) -> bool {
+        match (self, data_type) {
+            (Value::Boolean(_), DataType::Boolean)
+            | (Value::Integer(_), DataType::Integer)
+            | (Value::String(_), DataType::String)
+            | (Value::List(_), DataType::List(_)) => true,
+            (Value::Struct(values), DataType::Struct(fields)) => {
+                values.len() == fields.len()
+                    && values
+                        .iter()
+                        .zip(fields.iter())
+                        .all(|((name, _), field)| name == field.name())
+            }
+            _ => false,
         }
     }
 }
