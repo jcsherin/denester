@@ -41,7 +41,7 @@ impl Field {
         &self.data_type
     }
 
-    pub fn is_nullable(&self) -> bool {
+    pub fn is_optional(&self) -> bool {
         self.nullable
     }
 
@@ -50,7 +50,7 @@ impl Field {
     }
 
     pub fn is_required(&self) -> bool {
-        !self.is_nullable() && !self.is_repeated()
+        !self.is_optional() && !self.is_repeated()
     }
 }
 
@@ -107,7 +107,7 @@ mod tests {
 
         assert_eq!(field.name(), "name");
         assert_eq!(field.data_type(), &DataType::String);
-        assert_eq!(field.is_nullable(), false);
+        assert_eq!(field.is_optional(), false);
     }
 
     #[test]

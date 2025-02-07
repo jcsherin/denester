@@ -160,7 +160,7 @@ impl<'a> PathMetadata<'a> {
 
             match field.data_type() {
                 DataType::Boolean | DataType::Integer | DataType::String | DataType::Struct(_) => {
-                    if field.is_nullable() {
+                    if field.is_optional() {
                         definition_level += 1;
                     }
                 }
@@ -453,7 +453,7 @@ mod tests {
         let actual = PathMetadata::new(&schema, &paths[0]);
         assert_eq!(actual.field.data_type(), &DataType::Integer);
         assert_eq!(actual.field.name(), "DocId");
-        assert_eq!(actual.field.is_nullable(), false);
+        assert_eq!(actual.field.is_optional(), false);
         assert_eq!(actual.path, vec!["DocId"]);
         assert_eq!(actual.definition_level, 0);
         assert_eq!(actual.repetition_level, 0);
@@ -464,7 +464,7 @@ mod tests {
             &DataType::List(Box::new(DataType::Integer))
         );
         assert_eq!(actual.field.name(), "Backward");
-        assert_eq!(actual.field.is_nullable(), true);
+        assert_eq!(actual.field.is_optional(), true);
         assert_eq!(actual.path, vec!["Links", "Backward"]);
         assert_eq!(actual.definition_level, 2);
         assert_eq!(actual.repetition_level, 1);
@@ -482,7 +482,7 @@ mod tests {
         let actual = PathMetadata::new(&schema, &paths[3]);
         assert_eq!(actual.field.data_type(), &DataType::String);
         assert_eq!(actual.field.name(), "Code");
-        assert_eq!(actual.field.is_nullable(), false);
+        assert_eq!(actual.field.is_optional(), false);
         assert_eq!(actual.path, vec!["Name", "Language", "Code"]);
         assert_eq!(actual.definition_level, 2);
         assert_eq!(actual.repetition_level, 2);
@@ -490,7 +490,7 @@ mod tests {
         let actual = PathMetadata::new(&schema, &paths[4]);
         assert_eq!(actual.field.data_type(), &DataType::String);
         assert_eq!(actual.field.name(), "Country");
-        assert_eq!(actual.field.is_nullable(), true);
+        assert_eq!(actual.field.is_optional(), true);
         assert_eq!(actual.path, vec!["Name", "Language", "Country"]);
         assert_eq!(actual.definition_level, 3);
         assert_eq!(actual.repetition_level, 2);
@@ -498,7 +498,7 @@ mod tests {
         let actual = PathMetadata::new(&schema, &paths[5]);
         assert_eq!(actual.field.data_type(), &DataType::String);
         assert_eq!(actual.field.name(), "Url");
-        assert_eq!(actual.field.is_nullable(), true);
+        assert_eq!(actual.field.is_optional(), true);
         assert_eq!(actual.path, vec!["Name", "Url"]);
         assert_eq!(actual.definition_level, 2);
         assert_eq!(actual.repetition_level, 1);

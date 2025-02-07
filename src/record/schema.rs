@@ -192,17 +192,17 @@ mod tests {
         let s = string("string");
 
         assert!(
-            !b.is_nullable(),
+            !b.is_optional(),
             "Expected Boolean field to be required, found: {:?}",
             b
         );
         assert!(
-            !i.is_nullable(),
+            !i.is_optional(),
             "Expected Integer field to be required, found: {:?}",
             i
         );
         assert!(
-            !s.is_nullable(),
+            !s.is_optional(),
             "Expected String field to be required, found: {:?}",
             s
         );
@@ -215,17 +215,17 @@ mod tests {
         let os = optional_string("string");
 
         assert!(
-            ob.is_nullable(),
+            ob.is_optional(),
             "Expected Boolean field to be optional, found {:?}",
             ob
         );
         assert!(
-            oi.is_nullable(),
+            oi.is_optional(),
             "Expected Integer field to be optional, found {:?}",
             oi
         );
         assert!(
-            os.is_nullable(),
+            os.is_optional(),
             "Expected String field to be optional, found {:?}",
             os
         );
@@ -244,7 +244,7 @@ mod tests {
             rb
         );
         assert!(
-            rb.is_nullable(),
+            rb.is_optional(),
             "Expected Boolean field to be optional, found: {:?}",
             rb
         );
@@ -256,7 +256,7 @@ mod tests {
             ri
         );
         assert!(
-            ri.is_nullable(),
+            ri.is_optional(),
             "Expected Integer field to be optional, found {:?}",
             ri
         );
@@ -268,7 +268,7 @@ mod tests {
             rs
         );
         assert!(
-            rs.is_nullable(),
+            rs.is_optional(),
             "Expected String field to be optional, found {:?}",
             rs
         );
@@ -290,12 +290,12 @@ mod tests {
         let og = optional_group("optional_group", vec![]);
 
         assert!(
-            !rg.is_nullable(),
+            !rg.is_optional(),
             "Expected Boolean field to be required, found {:?}",
             rg
         );
         assert!(
-            og.is_nullable(),
+            og.is_optional(),
             "Expected Boolean field to be required, found {:?}",
             og
         );
@@ -309,7 +309,7 @@ mod tests {
         let repeated_group = repeated_group("repeated_group", vec![]);
 
         assert!(
-            repeated_group.is_nullable(),
+            repeated_group.is_optional(),
             "Expected repeated Group to be optional, found {:?}",
             repeated_group
         );
@@ -368,14 +368,14 @@ mod tests {
         //   required int64 DocId;
         assert_eq!(doc.fields()[0].name(), "DocId");
         assert_eq!(doc.fields()[0].data_type(), &DataType::Integer);
-        assert_eq!(doc.fields()[0].is_nullable(), false);
+        assert_eq!(doc.fields()[0].is_optional(), false);
 
         //   optional group Links {
         //     repeated int64 Backward;
         //     repeated int64 Forward;
         //   }
         assert_eq!(doc.fields()[1].name(), "Links");
-        assert_eq!(doc.fields()[1].is_nullable(), true);
+        assert_eq!(doc.fields()[1].is_optional(), true);
         if let DataType::Struct(fields) = doc.fields()[1].data_type() {
             assert_eq!(fields.len(), 2);
 
@@ -384,14 +384,14 @@ mod tests {
                 fields[0].data_type(),
                 &DataType::List(Box::new(DataType::Integer))
             );
-            assert_eq!(fields[0].is_nullable(), true);
+            assert_eq!(fields[0].is_optional(), true);
 
             assert_eq!(fields[1].name(), "Forward");
             assert_eq!(
                 fields[1].data_type(),
                 &DataType::List(Box::new(DataType::Integer))
             );
-            assert_eq!(fields[1].is_nullable(), true);
+            assert_eq!(fields[1].is_optional(), true);
         } else {
             panic!(
                 "Links should be an optional group, found: {:?}",
@@ -411,7 +411,7 @@ mod tests {
                 assert_eq!(fields.len(), 2);
 
                 assert_eq!(fields[0].name(), "Language");
-                assert_eq!(fields[0].is_nullable(), true);
+                assert_eq!(fields[0].is_optional(), true);
                 //     repeated group Language {
                 //       required string Code;
                 //       optional string Country;
@@ -421,11 +421,11 @@ mod tests {
                         assert_eq!(fields.len(), 2);
 
                         assert_eq!(fields[0].name(), "Code");
-                        assert_eq!(fields[0].is_nullable(), false);
+                        assert_eq!(fields[0].is_optional(), false);
                         assert_eq!(fields[0].data_type(), &DataType::String);
 
                         assert_eq!(fields[1].name(), "Country");
-                        assert_eq!(fields[1].is_nullable(), true);
+                        assert_eq!(fields[1].is_optional(), true);
                         assert_eq!(fields[1].data_type(), &DataType::String);
                     } else {
                         panic!(
@@ -442,7 +442,7 @@ mod tests {
 
                 assert_eq!(fields[1].name(), "Url");
                 assert_eq!(fields[1].data_type(), &DataType::String);
-                assert_eq!(fields[1].is_nullable(), true);
+                assert_eq!(fields[1].is_optional(), true);
             } else {
                 panic!("Inner Name should be a struct, found: {:?}", name_group)
             }

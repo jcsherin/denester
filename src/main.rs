@@ -12,7 +12,7 @@ fn main() {
             index,
             field.name(),
             field.data_type(),
-            field.is_nullable()
+            field.is_optional()
         );
     }
 
