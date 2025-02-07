@@ -142,6 +142,18 @@ impl<'a> PathMetadata<'a> {
         &self.path
     }
 
+    pub fn leaf(&self) -> &Field {
+        &self.field
+    }
+
+    pub fn max_repetition_level(&self) -> u8 {
+        self.repetition_level
+    }
+
+    pub fn max_definition_level(&self) -> u8 {
+        self.definition_level
+    }
+
     fn compute_levels(schema: &Schema, field_path: &FieldPath) -> (u8, u8) {
         let mut definition_level = 0;
         let mut repetition_level = 0;
