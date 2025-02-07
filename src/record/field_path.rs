@@ -1,4 +1,4 @@
-use crate::record::{DataType, Field, Schema};
+use crate::record::{DataType, Field, FieldLevel, Schema};
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
@@ -24,17 +24,6 @@ impl<'a> FieldPath<'a> {
 impl<'a> Display for FieldPath<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "path: {} field:{}", self.path.join("."), self.field)
-    }
-}
-
-struct FieldLevel<'a> {
-    iter: std::slice::Iter<'a, Field>,
-    path: Vec<String>,
-}
-
-impl<'a> FieldLevel<'a> {
-    fn new(iter: std::slice::Iter<'a, Field>, path: Vec<String>) -> Self {
-        Self { iter, path }
     }
 }
 

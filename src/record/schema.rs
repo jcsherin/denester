@@ -1,4 +1,4 @@
-use crate::record::{DataType, Field};
+use crate::record::{DataType, Field, FieldLevel, PathVector};
 use std::fmt;
 use std::fmt::Formatter;
 use std::fmt::Write;
@@ -23,6 +23,50 @@ impl Schema {
 
     pub fn fields(&self) -> &[Field] {
         &self.fields
+    }
+
+    pub fn iter_depth_first(&self) -> DepthFirstSchemaIterator {
+        DepthFirstSchemaIterator {
+            stack: vec![FieldLevel::new(self.fields.iter(), vec![])],
+        }
+    }
+}
+
+pub struct DepthFirstSchemaIterator<'a> {
+    stack: Vec<FieldLevel<'a>>,
+}
+
+impl<'a> Iterator for DepthFirstSchemaIterator<'a> {
+    type Item = (&'a Field, PathVector);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(field_level) = self.stack.last_mut() {
+            if let Some(field) = field_level.iter.next() {
+                let mut path = field_level.path.clone();
+                path.push(field.name().to_string());
+
+                match field.data_type() {
+                    DataType::List(item_type) => match item_type.as_ref() {
+                        DataType::Struct(children) => {
+                            self.stack
+                                .push(FieldLevel::new(children.iter(), path.clone()));
+                        }
+                        _ => {}
+                    },
+                    DataType::Struct(children) => {
+                        self.stack
+                            .push(FieldLevel::new(children.iter(), path.clone()));
+                    }
+                    _ => {}
+                }
+
+                return Some((field, path));
+            } else {
+                self.stack.pop();
+            }
+        }
+
+        None
     }
 }
 

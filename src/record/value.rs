@@ -1,3 +1,4 @@
+use crate::record::PathVector;
 use std::fmt;
 use std::fmt::Formatter;
 
@@ -140,7 +141,6 @@ impl ValueBuilder {
     }
 }
 
-type PathVector = Vec<String>;
 pub struct DepthFirstValueIterator<'a> {
     stack: Vec<(&'a Value, PathVector)>,
 }
