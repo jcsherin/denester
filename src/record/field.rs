@@ -11,6 +11,12 @@ pub enum DataType {
     Struct(Vec<Field>),
 }
 
+impl DataType {
+    pub fn is_list(&self) -> bool {
+        matches!(self, DataType::List(_))
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Field {
     name: String,
@@ -37,6 +43,14 @@ impl Field {
 
     pub fn is_nullable(&self) -> bool {
         self.nullable
+    }
+
+    pub fn is_repeated(&self) -> bool {
+        self.data_type.is_list()
+    }
+
+    pub fn is_required(&self) -> bool {
+        !self.is_nullable() && !self.is_repeated()
     }
 }
 
