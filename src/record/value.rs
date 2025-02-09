@@ -1,4 +1,5 @@
 use crate::record::{DataType, Field, PathVector};
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Formatter;
 
@@ -171,34 +172,46 @@ impl Value {
         }
     }
 
+    /// Performs shallow type checking of struct
+    ///
+    /// - Duplicate names are not allowed.
+    /// - All required fields must be present.
+    /// - Names in values must exist in field definitions.
+    /// - Order of values can differ from field definitions.
     fn matches_type_struct(&self, values: &Vec<(String, Value)>, fields: &Vec<Field>) -> bool {
+        // If there are more named value pairs than defined fields in the struct, it cannot be a
+        // valid match. Fewer values are allowed as some fields maybe repeated/optional.
         if values.len() > fields.len() {
             return false;
         }
 
-        let mut fields_iter = fields.iter().peekable();
-
+        // Duplicate names are not allowed
+        let mut seen_names = HashSet::new();
         for (name, _) in values {
-            let mut found_match = false;
-
-            while let Some(field) = fields_iter.peek() {
-                if field.name() == name {
-                    fields_iter.next();
-                    found_match = true;
-                    break;
-                } else if !field.is_required() {
-                    fields_iter.next();
-                } else {
-                    return false;
-                }
-            }
-
-            if !found_match {
+            if !seen_names.insert(name) {
                 return false;
             }
         }
 
-        !fields_iter.any(|field| field.is_required())
+        let mut field_names = HashSet::new();
+        let mut required_fields = HashSet::new();
+        for field in fields {
+            field_names.insert(field.name());
+            if field.is_required() {
+                required_fields.insert(field.name());
+            }
+        }
+
+        let mut present_fields = HashSet::new();
+        for (name, _) in values {
+            if !field_names.contains(name.as_str()) {
+                return false;
+            }
+            present_fields.insert(name.as_str());
+        }
+
+        // All required fields are present
+        required_fields.is_subset(&present_fields)
     }
 }
 
