@@ -166,7 +166,7 @@ impl Value {
             (Value::String(val), DataType::String) => !(val.is_none() && !field.is_optional()),
             (Value::List(_), DataType::List(_)) => true,
             (Value::Struct(values), DataType::Struct(fields)) => {
-                self.matches_type_struct(values, fields)
+                self.matches_struct(values, fields)
             }
             _ => false,
         }
@@ -178,7 +178,7 @@ impl Value {
     /// - All required fields must be present.
     /// - Names in values must exist in field definitions.
     /// - Order of values can differ from field definitions.
-    fn matches_type_struct(&self, values: &Vec<(String, Value)>, fields: &Vec<Field>) -> bool {
+    fn matches_struct(&self, values: &Vec<(String, Value)>, fields: &Vec<Field>) -> bool {
         // If there are more named value pairs than defined fields in the struct, it cannot be a
         // valid match. Fewer values are allowed as some fields maybe repeated/optional.
         if values.len() > fields.len() {
