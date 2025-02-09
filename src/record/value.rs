@@ -159,12 +159,10 @@ impl Value {
     /// type checked.
     pub fn matches_type_shallow(&self, field: &Field) -> bool {
         match (self, field.data_type()) {
+            // matches both scalar type and nullability
             (Value::Boolean(val), DataType::Boolean)
             | (Value::Integer(val), DataType::Integer)
-            | (Value::String(val), DataType::String) => match (val, field.is_optional()) {
-                (None, false) => false,
-                _ => true,
-            },
+            | (Value::String(val), DataType::String) => !(val.is_none() && !field.is_optional()),
             (Value::List(_), DataType::List(_)) => true,
             (Value::Struct(values), DataType::Struct(fields)) => {
                 self.matches_type_struct(values, fields)
