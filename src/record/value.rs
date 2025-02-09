@@ -157,12 +157,15 @@ impl Value {
     /// For repeated values `Value::List(_)` the individual items in the list are not type checked.
     /// Similarly, for records `Value::Struct(_)` the field names should match. The values are not
     /// type checked.
-    pub fn matches_type_shallow(&self, data_type: &DataType) -> bool {
-        match (self, data_type) {
-            (Value::Boolean(_), DataType::Boolean)
-            | (Value::Integer(_), DataType::Integer)
-            | (Value::String(_), DataType::String)
-            | (Value::List(_), DataType::List(_)) => true,
+    pub fn matches_type_shallow(&self, field: &Field) -> bool {
+        match (self, field.data_type()) {
+            (Value::Boolean(val), DataType::Boolean)
+            | (Value::Integer(val), DataType::Integer)
+            | (Value::String(val), DataType::String) => match (val, field.is_optional()) {
+                (None, false) => false,
+                _ => true,
+            },
+            (Value::List(_), DataType::List(_)) => true,
             (Value::Struct(values), DataType::Struct(fields)) => {
                 self.matches_type_struct(values, fields)
             }
