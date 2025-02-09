@@ -1,4 +1,4 @@
-use crate::record::{DataType, PathVector};
+use crate::record::{DataType, Field, PathVector};
 use std::fmt;
 use std::fmt::Formatter;
 
@@ -164,14 +164,40 @@ impl Value {
             | (Value::String(_), DataType::String)
             | (Value::List(_), DataType::List(_)) => true,
             (Value::Struct(values), DataType::Struct(fields)) => {
-                values.len() == fields.len()
-                    && values
-                        .iter()
-                        .zip(fields.iter())
-                        .all(|((name, _), field)| name == field.name())
+                self.matches_type_struct(values, fields)
             }
             _ => false,
         }
+    }
+
+    fn matches_type_struct(&self, values: &Vec<(String, Value)>, fields: &Vec<Field>) -> bool {
+        if values.len() > fields.len() {
+            return false;
+        }
+
+        let mut fields_iter = fields.iter().peekable();
+
+        for (name, _) in values {
+            let mut found_match = false;
+
+            while let Some(field) = fields_iter.peek() {
+                if field.name() == name {
+                    fields_iter.next();
+                    found_match = true;
+                    break;
+                } else if !field.is_required() {
+                    fields_iter.next();
+                } else {
+                    return false;
+                }
+            }
+
+            if !found_match {
+                return false;
+            }
+        }
+
+        !fields_iter.any(|field| field.is_required())
     }
 }
 
