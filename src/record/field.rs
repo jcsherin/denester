@@ -42,7 +42,7 @@ impl Field {
     }
 
     pub fn is_optional(&self) -> bool {
-        self.nullable
+        self.data_type.is_list() || self.nullable
     }
 
     pub fn is_repeated(&self) -> bool {
