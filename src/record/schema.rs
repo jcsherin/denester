@@ -30,6 +30,10 @@ impl Schema {
             stack: vec![FieldLevel::new(self.fields.iter(), vec![])],
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.fields().is_empty()
+    }
 }
 
 pub struct DepthFirstSchemaIterator<'a> {

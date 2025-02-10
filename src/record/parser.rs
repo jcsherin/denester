@@ -209,21 +209,32 @@ impl LevelContext {
 
 pub struct ValueParser<'a> {
     schema: &'a Schema,
-    path_metadata_map: HashMap<Vec<String>, PathMetadata<'a>>,
+    paths: Vec<PathMetadata<'a>>,
     value_iter: DepthFirstValueIterator<'a>,
-    level_context: LevelContext,
+    state: ValueParserState<'a>,
+}
+
+#[derive(Default)]
+struct ValueParserState<'a> {
+    schema_context: Vec<&'a [Field]>,
 }
 
 impl<'a> ValueParser<'a> {
     fn new(schema: &'a Schema, value_iter: DepthFirstValueIterator<'a>) -> Self {
-        let path_metadata_map = PathMetadataIterator::new(schema)
-            .map(|path_metadata| (path_metadata.path().to_vec(), path_metadata))
-            .collect();
+        let paths = PathMetadataIterator::new(schema).collect::<Vec<_>>();
+        let state = if schema.is_empty() {
+            ValueParserState::default()
+        } else {
+            ValueParserState {
+                schema_context: vec![schema.fields()],
+            }
+        };
+
         Self {
             schema,
-            path_metadata_map,
+            paths,
             value_iter,
-            level_context: Default::default(),
+            state,
         }
     }
 }
