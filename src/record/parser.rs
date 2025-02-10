@@ -1,13 +1,17 @@
 use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
+use crate::record::schema::DepthFirstSchemaIterator;
 use crate::record::value::DepthFirstValueIterator;
-use crate::record::{DataType, Field, Schema, Value};
+use crate::record::{DataType, Field, PathVector, Schema, Value};
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum ParseError<'a> {
+    UnknownField {
+        path: String,
+        field_name: String,
+    },
     RequiredFieldIsMissing {
         field_path: FieldPath<'a>,
     },
@@ -41,6 +45,9 @@ pub enum ParseError<'a> {
 impl<'a> Display for ParseError<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            ParseError::UnknownField { path, field_name } => {
+                write!(f, "Field name: {} not found in path: {}", field_name, path)
+            }
             ParseError::RequiredFieldIsMissing { field_path } => {
                 write!(f, "Required field is missing: {}", field_path)
             }
@@ -196,7 +203,7 @@ struct LevelContext {
 impl LevelContext {
     fn with_field(&self, field: &Field) -> Self {
         let increment = DefinitionLevel::from(
-            matches!(field.data_type(), DataType::List(_)) || field.is_nullable(),
+            matches!(field.data_type(), DataType::List(_)) || field.is_optional(),
         );
 
         Self {
@@ -249,66 +256,58 @@ type StripedColumnResult<'a> = Result<StripedColumnValue, ParseError<'a>>;
 impl<'a> Iterator for ValueParser<'a> {
     type Item = StripedColumnResult<'a>;
 
-    /**
-    Iterate through the Value in depth-first order and when we reach the leaf
-    node emit a StripedColumnValue.
-
-    The schema is used to verify that the Value has the same path structure
-    as defined. The type of each Value node is verified against the field
-    definition in the schema (required | optional | repeated).
-
-    If the value cannot be parsed abort processing and return a meaningful
-    error message. (strict mode)
-
-    If a path contains repeated or optional fields, the path may terminate
-    before reaching the leaf node. In this case we return NULL as the value
-    in StripedColumnValue.
-
-    During Value traversal we maintain the definition level state. It is
-    incremented whenever we read a Value node which is defined as either
-    optional or repeated in the schema.
-
-    The repetition level state is trickier. We track both the depth and
-    the repetition level for repeated Values. Here depth does not mean
-    the depth of a Value node in the tree, rather it is the repetition
-    depth. The repetition level for each Value node can be computed using
-    the previous (depth, repetition level) values.
-        - The first item is a special case. The computed repetition level
-        will be same as the repetition level of its parent.
-        - For the remaining items the repetition level is same as the
-        repetition depth of its parent.
-        - For an empty list the computed repetition level will be same
-        as the repetition level of its parent.
-
-    The PathMetadata is a precomputed struct which contains the maximum
-    possible values for definition levels and repetition levels for a
-    given path. This allows us to implement bounds checking for computed
-    level values:
-        - The computed levels should not exceed the max value
-        - The repetition level should not exceed definition level
-        - The definition level begins at 1
-        - The repetition level begins at 0
-
-    Algorithm:
-        for each (Value, PathVector) in DepthFirstValueIterator
-            compute levels and update state:
-                compute definition levels
-                compute repetition levels
-            validate Value:
-                check datatype matches                  # type error
-                check nullable matches                  # required/optional
-                check name matches (only struct fields) # path error
-                check bounds:
-                    is within max definition level
-                    is within max repetition level
-                    is repetition level < definition level
-            if primitive value
-                return Ok(StripedColumnValue::new(value, rep, def))
-            else    # early path termination
-                return Ok(StripedColumnValue::new(null_value, rep, def))
-    */
+    /// TODO: Enforce top-level Struct in Schema & Value
+    /// Right now top-level is a collection of fields and therefore we are unable to do
+    /// type-checking without additional checks. When top-level Struct is enforced for
+    /// both value and schema then we can immediately do type checking because the
+    /// Schema top-level datatype is always going to be a Struct and not just a loose
+    /// collection of fields.
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        while let Some((value, path)) = self.value_iter.next() {
+            // A path like ["a", "b", "c"] is equivalent to "a.b.c" in accessing a nested field
+            // in the record. So the last name in the path provides us the key for lookup of the
+            // field definition of the current value in the schema.
+            // But at the top-level the path is empty [], therefore we can advance the value
+            // iterator to get the next value.
+            if path.is_empty() {
+                println!("Top-level Value. Traversal started!");
+                continue;
+            }
+
+            let field_match = match (path.last(), self.state.schema_context.last()) {
+                (Some(field_name), Some(fields)) => fields
+                    .iter()
+                    .find(|field| field.name() == field_name)
+                    .ok_or(ParseError::UnknownField {
+                        path: path.join("."),
+                        field_name: field_name.to_string(),
+                    }),
+                (None, _) => {
+                    unimplemented!("missing field name")
+                }
+                (_, None) => {
+                    unimplemented!("missing schema context")
+                }
+            };
+
+            // Type check
+            match field_match {
+                Ok(field) => {
+                    if value.matches_type_shallow(field) {
+                        // type checking passed
+                    } else {
+                        // create parse error to indicate type checking failed for `field_name` in
+                        // `path.join(".")` when it was compared to schema `field` definition.
+                    }
+                }
+                Err(_) => {
+                    unimplemented!("error handling")
+                }
+            }
+
+            println!("{} {} {}", value, path.join("."), field_match.unwrap())
+        }
+        None
     }
 }
 
