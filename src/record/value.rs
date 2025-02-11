@@ -165,56 +165,53 @@ impl Value {
             (Value::Integer(val), DataType::Integer) => !(val.is_none() && !field.is_optional()),
             (Value::String(val), DataType::String) => !(val.is_none() && !field.is_optional()),
             (Value::List(_), DataType::List(_)) => true,
-            (Value::Struct(values), DataType::Struct(fields)) => {
-                self.matches_struct(values, fields)
-            }
+            (Value::Struct(values), DataType::Struct(fields)) => matches_struct(values, fields),
             _ => false,
         }
     }
-
-    /// Performs shallow type checking of struct
-    ///
-    /// - Duplicate names are not allowed.
-    /// - All required fields must be present.
-    /// - Names in values must exist in field definitions.
-    /// - Order of values can differ from field definitions.
-    fn matches_struct(&self, values: &Vec<(String, Value)>, fields: &Vec<Field>) -> bool {
-        // If there are more named value pairs than defined fields in the struct, it cannot be a
-        // valid match. Fewer values are allowed as some fields maybe repeated/optional.
-        if values.len() > fields.len() {
-            return false;
-        }
-
-        // Duplicate names are not allowed
-        let mut seen_names = HashSet::new();
-        for (name, _) in values {
-            if !seen_names.insert(name) {
-                return false;
-            }
-        }
-
-        let mut field_names = HashSet::new();
-        let mut required_fields = HashSet::new();
-        for field in fields {
-            field_names.insert(field.name());
-            if field.is_required() {
-                required_fields.insert(field.name());
-            }
-        }
-
-        let mut present_fields = HashSet::new();
-        for (name, _) in values {
-            if !field_names.contains(name.as_str()) {
-                return false;
-            }
-            present_fields.insert(name.as_str());
-        }
-
-        // All required fields are present
-        required_fields.is_subset(&present_fields)
-    }
 }
 
+/// Performs shallow type checking of struct
+///
+/// - Duplicate names are not allowed.
+/// - All required fields must be present.
+/// - Names in values must exist in field definitions.
+/// - Order of values can differ from field definitions.
+pub fn matches_struct(values: &Vec<(String, Value)>, fields: &[Field]) -> bool {
+    // If there are more named value pairs than defined fields in the struct, it cannot be a
+    // valid match. Fewer values are allowed as some fields maybe repeated/optional.
+    if values.len() > fields.len() {
+        return false;
+    }
+
+    // Duplicate names are not allowed
+    let mut seen_names = HashSet::new();
+    for (name, _) in values {
+        if !seen_names.insert(name) {
+            return false;
+        }
+    }
+
+    let mut field_names = HashSet::new();
+    let mut required_fields = HashSet::new();
+    for field in fields {
+        field_names.insert(field.name());
+        if field.is_required() {
+            required_fields.insert(field.name());
+        }
+    }
+
+    let mut present_fields = HashSet::new();
+    for (name, _) in values {
+        if !field_names.contains(name.as_str()) {
+            return false;
+        }
+        present_fields.insert(name.as_str());
+    }
+
+    // All required fields are present
+    required_fields.is_subset(&present_fields)
+}
 impl<'a> Iterator for DepthFirstValueIterator<'a> {
     type Item = (&'a Value, PathVector);
 
