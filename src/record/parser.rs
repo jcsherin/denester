@@ -261,6 +261,20 @@ pub struct StripedColumnValue {
     definition_level: DefinitionLevel,
 }
 
+impl StripedColumnValue {
+    fn new(
+        value: Value,
+        repetition_level: RepetitionLevel,
+        definition_level: DefinitionLevel,
+    ) -> Self {
+        StripedColumnValue {
+            value,
+            repetition_level,
+            definition_level,
+        }
+    }
+}
+
 type StripedColumnResult<'a> = Result<StripedColumnValue, ParseError<'a>>;
 impl<'a> Iterator for ValueParser<'a> {
     type Item = StripedColumnResult<'a>;
@@ -273,10 +287,10 @@ impl<'a> Iterator for ValueParser<'a> {
     /// collection of fields.
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((value, path)) = self.value_iter.next() {
+            println!("~~~");
             println!("top-level: {}", path.is_empty());
             println!("value: {}", value);
             println!("path: {}", path.join("."));
-            println!("~~~");
 
             // Type-checking for top-level struct value
             if path.is_empty() {
@@ -294,8 +308,37 @@ impl<'a> Iterator for ValueParser<'a> {
                     todo!("handle unexpected value type")
                 }
             }
+
+            if let Some(field_name) = path.last() {
+                if let Some(field) = self.find_field_by(field_name) {
+                    if value.matches_type_shallow(field) {
+                        match value {
+                            Value::Boolean(v) => {
+                                return Some(Ok(StripedColumnValue::new(Value::Boolean(*v), 0, 0)))
+                            }
+                            Value::Integer(v) => {
+                                return Some(Ok(StripedColumnValue::new(Value::Integer(*v), 0, 0)))
+                            }
+                            Value::String(v) => {
+                                return Some(Ok(StripedColumnValue::new(
+                                    Value::String(v.clone()),
+                                    0,
+                                    0,
+                                )))
+                            }
+                            Value::List(items) => {
+                                todo!()
+                            }
+                            Value::Struct(_) => {
+                                todo!()
+                            }
+                        }
+                    }
+                }
+            }
         }
 
+        // TODO: generate NULL values when top-level optional/repeated paths are missing
         None
     }
 }
