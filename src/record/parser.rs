@@ -1,6 +1,6 @@
 use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
 use crate::record::schema::DepthFirstSchemaIterator;
-use crate::record::value::DepthFirstValueIterator;
+use crate::record::value::{matches_struct, DepthFirstValueIterator};
 use crate::record::{DataType, Field, PathVector, Schema, Value};
 use std::borrow::Cow;
 use std::error::Error;
@@ -244,6 +244,15 @@ impl<'a> ValueParser<'a> {
             state,
         }
     }
+
+    fn current_fields(&self) -> Option<&[Field]> {
+        self.state.schema_context.last().map(|v| *v)
+    }
+
+    fn find_field_by(&self, name: &str) -> Option<&Field> {
+        self.current_fields()
+            .and_then(|fields| fields.iter().find(|f| f.name() == name))
+    }
 }
 
 pub struct StripedColumnValue {
@@ -264,48 +273,29 @@ impl<'a> Iterator for ValueParser<'a> {
     /// collection of fields.
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((value, path)) = self.value_iter.next() {
-            // A path like ["a", "b", "c"] is equivalent to "a.b.c" in accessing a nested field
-            // in the record. So the last name in the path provides us the key for lookup of the
-            // field definition of the current value in the schema.
-            // But at the top-level the path is empty [], therefore we can advance the value
-            // iterator to get the next value.
+            println!("top-level: {}", path.is_empty());
+            println!("value: {}", value);
+            println!("path: {}", path.join("."));
+            println!("~~~");
+
             if path.is_empty() {
-                println!("Top-level Value. Traversal started!");
-                continue;
-            }
-
-            let field_match = match (path.last(), self.state.schema_context.last()) {
-                (Some(field_name), Some(fields)) => fields
-                    .iter()
-                    .find(|field| field.name() == field_name)
-                    .ok_or(ParseError::UnknownField {
-                        path: path.join("."),
-                        field_name: field_name.to_string(),
-                    }),
-                (None, _) => {
-                    unimplemented!("missing field name")
-                }
-                (_, None) => {
-                    unimplemented!("missing schema context")
-                }
-            };
-
-            // Type check
-            match field_match {
-                Ok(field) => {
-                    if value.matches_type_shallow(field) {
-                        // type checking passed
-                    } else {
-                        // create parse error to indicate type checking failed for `field_name` in
-                        // `path.join(".")` when it was compared to schema `field` definition.
-                    }
-                }
-                Err(_) => {
-                    unimplemented!("error handling")
+                match value {
+                    // Type-checking for top-level Struct Value
+                    Value::Struct(named_values) => match self.current_fields() {
+                        Some(fields) => {
+                            if matches_struct(named_values, &fields) {
+                                continue;
+                            } else {
+                                todo!("handle type mismatch with schema")
+                            }
+                            let matches_type = matches_struct(named_values, fields);
+                            println!("Type checking for {named_values:?} -> {}", matches_type);
+                        }
+                        None => todo!("handle error because there are no field definitions"),
+                    },
+                    _ => {}
                 }
             }
-
-            println!("{} {} {}", value, path.join("."), field_match.unwrap())
         }
         None
     }
