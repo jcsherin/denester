@@ -278,25 +278,24 @@ impl<'a> Iterator for ValueParser<'a> {
             println!("path: {}", path.join("."));
             println!("~~~");
 
+            // Type-checking for top-level struct value
             if path.is_empty() {
-                match value {
-                    // Type-checking for top-level Struct Value
-                    Value::Struct(named_values) => match self.current_fields() {
-                        Some(fields) => {
-                            if matches_struct(named_values, &fields) {
-                                continue;
-                            } else {
-                                todo!("handle type mismatch with schema")
-                            }
-                            let matches_type = matches_struct(named_values, fields);
-                            println!("Type checking for {named_values:?} -> {}", matches_type);
+                if let Value::Struct(named_values) = value {
+                    if let Some(fields) = self.current_fields() {
+                        if matches_struct(named_values, fields) {
+                            continue;
+                        } else {
+                            todo!("handle type checking failed for top-level value")
                         }
-                        None => todo!("handle error because there are no field definitions"),
-                    },
-                    _ => {}
+                    } else {
+                        todo!("handle missing field definitions")
+                    }
+                } else {
+                    todo!("handle unexpected value type")
                 }
             }
         }
+
         None
     }
 }
