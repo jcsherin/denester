@@ -221,9 +221,50 @@ pub struct ValueParser<'a> {
     state: ValueParserState<'a>,
 }
 
+struct ListContext {
+    field_name: String,
+    length: usize,
+    current_index: usize,
+}
+
+impl ListContext {
+    fn new(field_name: String, length: usize) -> Self {
+        Self {
+            field_name,
+            length,
+            current_index: 0,
+        }
+    }
+
+    fn field_name(&self) -> &str {
+        &self.field_name
+    }
+
+    fn len(&self) -> usize {
+        self.length
+    }
+
+    fn position(&self) -> usize {
+        self.current_index
+    }
+
+    fn increment(&mut self) {
+        self.current_index += 1;
+    }
+
+    fn is_empty(&self) -> bool {
+        self.length == 0
+    }
+
+    fn is_exhausted(&self) -> bool {
+        self.current_index >= self.length
+    }
+}
+
 #[derive(Default)]
 struct ValueParserState<'a> {
     struct_stack: Vec<&'a [Field]>,
+    list_stack: Vec<ListContext>,
 }
 
 impl<'a> ValueParser<'a> {
@@ -234,6 +275,7 @@ impl<'a> ValueParser<'a> {
         } else {
             ValueParserState {
                 struct_stack: vec![schema.fields()],
+                list_stack: vec![],
             }
         };
 
@@ -327,12 +369,27 @@ impl<'a> Iterator for ValueParser<'a> {
                                 )))
                             }
                             Value::List(items) => {
-                                todo!()
+                                // Repeated values in a list container.
+                                //
+                                // The value iterator will yield the list items one by one. To
+                                // keep track that we are within a list context across multiple
+                                // `next()` calls of this iterator the state is maintained in a
+                                // stack.
+                                //
+                                // A stack allows us to maintain context for arbitrary nesting. A
+                                // list field type maybe a struct, and it can contain a field which
+                                // is a list and so on.
+                                self.state
+                                    .list_stack
+                                    .push(ListContext::new(field_name.to_string(), items.len()));
+                                continue;
                             }
                             Value::Struct(_) => {
                                 todo!()
                             }
                         }
+                    } else {
+                        todo!()
                     }
                 }
             }
