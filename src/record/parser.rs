@@ -292,6 +292,10 @@ impl<'a> ValueParser<'a> {
         self.current_fields()
             .and_then(|fields| fields.iter().find(|f| f.name() == name))
     }
+
+    fn current_list(&self) -> Option<&ListContext> {
+        self.state.list_stack.last()
+    }
 }
 
 pub struct StripedColumnValue {
@@ -399,8 +403,71 @@ impl<'a> Iterator for ValueParser<'a> {
                                 todo!()
                             }
                         }
+                    } else if matches!(field.data_type(), DataType::List(_)) {
+                        println!("expecting list item {}", value);
+                        // We are in a list context and this is a list item.
+                        //
+                        // Shallow type checking is lazy and does not type check the contents of
+                        // a list. This is necessary as lists may contain structs, and have
+                        // arbitrary levels of nesting.
+                        //
+                        // Here we know the list item type, and also track state about the progress
+                        // we have made in the list. We know the index position of this list item
+                        // in the list container.
+                        if let Some(list_context) = self.current_list() {
+                            if field_name == list_context.field_name() {
+                                match field.data_type() {
+                                    DataType::List(item_type) => {
+                                        match (value, item_type.as_ref()) {
+                                            (Value::Boolean(v), DataType::Boolean) => {
+                                                if !field.is_optional() && v.is_none() {
+                                                    todo!("list item is not nullable")
+                                                }
+                                                return Some(Ok(StripedColumnValue::new(
+                                                    Value::Boolean(*v),
+                                                    0,
+                                                    0,
+                                                )));
+                                            }
+                                            (Value::Integer(v), DataType::Integer) => {
+                                                if !field.is_optional() && v.is_none() {
+                                                    todo!("list item is not nullable")
+                                                }
+                                                return Some(Ok(StripedColumnValue::new(
+                                                    Value::Integer(*v),
+                                                    0,
+                                                    0,
+                                                )));
+                                            }
+                                            (Value::String(v), DataType::String) => {
+                                                if !field.is_optional() && v.is_none() {
+                                                    todo!("list item is not nullable")
+                                                }
+                                                return Some(Ok(StripedColumnValue::new(
+                                                    Value::String(v.clone()),
+                                                    0,
+                                                    0,
+                                                )));
+                                            }
+                                            (
+                                                Value::Struct(named_values),
+                                                DataType::Struct(fields),
+                                            ) => {
+                                                todo!("handle nested struct")
+                                            }
+                                            _ => todo!("value type does not match data type"),
+                                        }
+                                    }
+                                    _ => unreachable!("expected a list item"),
+                                }
+                            } else {
+                                todo!("list context mismatch")
+                            }
+                        } else {
+                            todo!("missing list context")
+                        }
                     } else {
-                        todo!()
+                        todo!("failed shallow type checking")
                     }
                 }
             }
