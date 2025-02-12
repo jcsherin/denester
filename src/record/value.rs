@@ -178,7 +178,7 @@ impl Value {
 /// - All required fields must be present.
 /// - Names in values must exist in field definitions.
 /// - Order of values can differ from field definitions.
-pub fn matches_struct(values: &Vec<(String, Value)>, fields: &[Field]) -> bool {
+pub fn matches_struct(values: &Vec<(String, Value)>, fields: &Vec<Field>) -> bool {
     // If there are more named value pairs than defined fields in the struct, it cannot be a
     // valid match. Fewer values are allowed as some fields maybe repeated/optional.
     if values.len() > fields.len() {

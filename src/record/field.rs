@@ -2,7 +2,7 @@ use std::fmt;
 use std::fmt::Formatter;
 use std::fmt::Write;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum DataType {
     Boolean,
     Integer,
@@ -17,7 +17,7 @@ impl DataType {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Field {
     name: String,
     data_type: DataType,

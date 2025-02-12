@@ -1,7 +1,6 @@
 use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
-use crate::record::schema::DepthFirstSchemaIterator;
 use crate::record::value::{matches_struct, DepthFirstValueIterator};
-use crate::record::{DataType, Field, PathVector, Schema, Value};
+use crate::record::{DataType, Field, Schema, Value};
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -218,7 +217,7 @@ pub struct ValueParser<'a> {
     schema: &'a Schema,
     paths: Vec<PathMetadata<'a>>,
     value_iter: DepthFirstValueIterator<'a>,
-    state: ValueParserState<'a>,
+    state: ValueParserState,
 }
 
 struct ListContext {
@@ -259,8 +258,8 @@ impl ListContext {
 }
 
 #[derive(Default)]
-struct ValueParserState<'a> {
-    struct_stack: Vec<&'a [Field]>,
+struct ValueParserState {
+    struct_stack: Vec<Vec<Field>>,
     list_stack: Vec<ListContext>,
 }
 
@@ -270,8 +269,13 @@ impl<'a> ValueParser<'a> {
         let state = if schema.is_empty() {
             ValueParserState::default()
         } else {
+            let fields = schema
+                .fields()
+                .iter()
+                .map(|f| f.clone())
+                .collect::<Vec<_>>();
             ValueParserState {
-                struct_stack: vec![schema.fields()],
+                struct_stack: vec![fields],
                 list_stack: vec![],
             }
         };
@@ -284,8 +288,8 @@ impl<'a> ValueParser<'a> {
         }
     }
 
-    fn current_fields(&self) -> Option<&[Field]> {
-        self.state.struct_stack.last().map(|v| *v)
+    fn current_fields(&self) -> Option<&Vec<Field>> {
+        self.state.struct_stack.last()
     }
 
     fn find_field_by(&self, name: &str) -> Option<&Field> {
@@ -339,7 +343,7 @@ impl<'a> Iterator for ValueParser<'a> {
             if path.is_empty() {
                 if let Value::Struct(named_values) = value {
                     if let Some(fields) = self.current_fields() {
-                        if matches_struct(named_values, fields) {
+                        if matches_struct(named_values, &fields) {
                             continue;
                         } else {
                             todo!("handle type checking failed for top-level value")
@@ -353,8 +357,8 @@ impl<'a> Iterator for ValueParser<'a> {
             }
 
             if let Some(field_name) = path.last() {
-                if let Some(field) = self.find_field_by(field_name) {
-                    if value.matches_type_shallow(field) {
+                if let Some(field) = self.find_field_by(field_name).map(|field| field.clone()) {
+                    if value.matches_type_shallow(&field) {
                         match value {
                             Value::Boolean(v) => {
                                 return Some(Ok(StripedColumnValue::new(Value::Boolean(*v), 0, 0)))
@@ -399,9 +403,16 @@ impl<'a> Iterator for ValueParser<'a> {
                                     todo!("get leaf field datatype from path metadata and return column value")
                                 }
                             }
-                            Value::Struct(_) => {
-                                todo!()
-                            }
+                            Value::Struct(_) => match field.data_type().clone() {
+                                DataType::Struct(fields) => {
+                                    println!("Adding {:?} to state.struct_stack", { &fields });
+                                    let cloned_fields =
+                                        fields.iter().map(|f| f.clone()).collect::<Vec<_>>();
+                                    self.state.struct_stack.push(cloned_fields);
+                                    continue;
+                                }
+                                _ => unreachable!("expected struct field"),
+                            },
                         }
                     } else if matches!(field.data_type(), DataType::List(_)) {
                         println!("expecting list item {}", value);
@@ -481,7 +492,10 @@ impl<'a> Iterator for ValueParser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::record::schema::{bool, integer, optional_integer, repeated_integer, string};
+    use crate::record::schema::{
+        bool, integer, optional_group, optional_integer, optional_string, repeated_group,
+        repeated_integer, required_group, string,
+    };
     use crate::record::value::ValueBuilder;
     use crate::record::SchemaBuilder;
 
@@ -720,5 +734,45 @@ mod tests {
         assert_eq!(parsed[5].value, Value::Integer(Some(3)));
         assert_eq!(parsed[5].definition_level, 1);
         assert_eq!(parsed[5].repetition_level, 0);
+    }
+
+    #[test]
+    fn test_nested_struct() {
+        let schema = SchemaBuilder::new("nested_struct", vec![])
+            .field(required_group(
+                "a",
+                vec![required_group(
+                    "b",
+                    vec![required_group("c", vec![integer("d")])],
+                )],
+            ))
+            .build();
+
+        let value = ValueBuilder::new()
+            .field(
+                "a",
+                ValueBuilder::new()
+                    .field(
+                        "b",
+                        ValueBuilder::new()
+                            .field("c", ValueBuilder::new().field("d", 1).build())
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 1);
+
+        // name column
+        assert_eq!(parsed[0].value, Value::Integer(Some(1)));
+        assert_eq!(parsed[0].definition_level, 0);
+        assert_eq!(parsed[0].repetition_level, 0);
     }
 }
