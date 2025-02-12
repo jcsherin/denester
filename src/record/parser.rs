@@ -223,7 +223,7 @@ pub struct ValueParser<'a> {
 
 #[derive(Default)]
 struct ValueParserState<'a> {
-    schema_context: Vec<&'a [Field]>,
+    struct_stack: Vec<&'a [Field]>,
 }
 
 impl<'a> ValueParser<'a> {
@@ -233,7 +233,7 @@ impl<'a> ValueParser<'a> {
             ValueParserState::default()
         } else {
             ValueParserState {
-                schema_context: vec![schema.fields()],
+                struct_stack: vec![schema.fields()],
             }
         };
 
@@ -246,7 +246,7 @@ impl<'a> ValueParser<'a> {
     }
 
     fn current_fields(&self) -> Option<&[Field]> {
-        self.state.schema_context.last().map(|v| *v)
+        self.state.struct_stack.last().map(|v| *v)
     }
 
     fn find_field_by(&self, name: &str) -> Option<&Field> {
