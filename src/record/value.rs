@@ -14,40 +14,41 @@ pub enum Value {
     Struct(Vec<(String, Value)>),
 }
 
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+impl Value {
+    fn fmt_with_indent(&self, f: &mut Formatter<'_>, indent: usize) -> fmt::Result {
         match self {
-            Value::Boolean(value) => write!(
-                f,
-                "{}",
-                value.map_or(String::from("<null>"), |b| b.to_string())
-            ),
-            Value::Integer(value) => write!(
-                f,
-                "{}",
-                value.map_or(String::from("<null>"), |n| n.to_string())
-            ),
-            Value::String(value) => write!(f, "{}", value.as_ref().map_or("<null>", |s| s)),
-            Value::List(values) if values.is_empty() => write!(f, "[]"),
+            Value::Boolean(value) => write!(f, "Value::Boolean({:?})", value,),
+            Value::Integer(value) => write!(f, "Value::Integer({:?})", value),
+            Value::String(value) => write!(f, "Value::String({:?})", value),
+            Value::List(values) if values.is_empty() => write!(f, "Value::List(items: [])"),
             Value::List(values) => {
-                write!(f, "[")?;
+                write!(f, "Value::List(items: [")?;
                 for (i, value) in values.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?
                     }
                     write!(f, "{}", value)?;
                 }
-                write!(f, "]")
+                write!(f, "])")
             }
-            Value::Struct(fields) if fields.is_empty() => write!(f, "{{}}"),
+            Value::Struct(fields) if fields.is_empty() => write!(f, "Value::Struct({{}})"),
             Value::Struct(fields) => {
-                writeln!(f, " {{ ")?;
+                writeln!(f, "{{")?;
                 for (k, v) in fields {
-                    writeln!(f, "  {}: {},", k, v)?;
+                    write!(f, "{:indent$}", "", indent = indent + 2)?;
+                    write!(f, "{}: ", k)?;
+                    v.fmt_with_indent(f, indent + 2)?;
+                    writeln!(f, ",")?;
                 }
-                write!(f, " }} ")
+                write!(f, "{:indent$}}}", "", indent = indent)
             }
         }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.fmt_with_indent(f, 0)
     }
 }
 
