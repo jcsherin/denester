@@ -228,6 +228,7 @@ struct ListContext {
 }
 
 impl ListContext {
+    // TODO: Do not allow creating a list context with length zero
     fn new(field_name: String, length: usize) -> Self {
         Self {
             field_name,
@@ -236,27 +237,23 @@ impl ListContext {
         }
     }
 
-    fn field_name(&self) -> &str {
+    pub fn field_name(&self) -> &str {
         &self.field_name
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.length
     }
 
-    fn position(&self) -> usize {
+    pub fn position(&self) -> usize {
         self.current_index
     }
 
-    fn increment(&mut self) {
+    pub fn increment(&mut self) {
         self.current_index += 1;
     }
 
-    fn is_empty(&self) -> bool {
-        self.length == 0
-    }
-
-    fn is_exhausted(&self) -> bool {
+    pub fn is_exhausted(&self) -> bool {
         self.current_index >= self.length
     }
 }
