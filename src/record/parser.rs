@@ -376,10 +376,24 @@ impl<'a> Iterator for ValueParser<'a> {
                                 // A stack allows us to maintain context for arbitrary nesting. A
                                 // list field type maybe a struct, and it can contain a field which
                                 // is a list and so on.
-                                self.state
-                                    .list_stack
-                                    .push(ListContext::new(field_name.to_string(), items.len()));
-                                continue;
+                                if !items.is_empty() {
+                                    self.state.list_stack.push(ListContext::new(
+                                        field_name.to_string(),
+                                        items.len(),
+                                    ));
+                                    continue;
+                                } else {
+                                    // Do not track state for an empty list. Here we return a scalar
+                                    // column value immediately by examining the PathMetadata which
+                                    // partially matches this path, to return the column or columns
+                                    // which are terminated because this list is empty.
+                                    //
+                                    // It can be multiple column values because the list inner type
+                                    // could be a struct with multiple fields. In the case of scalar
+                                    // list type we only need to emit a single null value with that
+                                    // item type here.
+                                    todo!("get leaf field datatype from path metadata and return column value")
+                                }
                             }
                             Value::Struct(_) => {
                                 todo!()
