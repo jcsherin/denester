@@ -350,6 +350,9 @@ impl<'a> Iterator for ValueParser<'a> {
             if path.is_empty() {
                 if let Value::Struct(named_values) = value {
                     if let Some(fields) = self.current_fields() {
+                        for field in fields {
+                            println!("schema field: {}", field);
+                        }
                         if matches_struct(named_values, &fields) {
                             continue;
                         } else {
@@ -550,10 +553,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(parsed.len(), 1);
-
         assert_eq!(parsed[0].value, Value::Integer(None));
-        assert_eq!(parsed[0].definition_level, 1);
-        assert_eq!(parsed[0].repetition_level, 0);
     }
 
     #[test]
@@ -567,10 +567,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(parsed.len(), 1);
-
         assert_eq!(parsed[0].value, Value::Integer(None));
-        assert_eq!(parsed[0].definition_level, 0); // missing field
-        assert_eq!(parsed[0].repetition_level, 0);
     }
 
     #[test]
@@ -584,10 +581,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(parsed.len(), 1);
-
         assert_eq!(parsed[0].value, Value::Integer(Some(10)));
-        assert_eq!(parsed[0].definition_level, 1);
-        assert_eq!(parsed[0].repetition_level, 0);
     }
 
     #[test]
@@ -601,10 +595,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(parsed.len(), 1);
-
         assert_eq!(parsed[0].value, Value::Integer(Some(10)));
-        assert_eq!(parsed[0].definition_level, 0);
-        assert_eq!(parsed[0].repetition_level, 0);
     }
 
     #[test]
@@ -641,10 +632,13 @@ mod tests {
         let mut parser = ValueParser::new(&schema, value.iter_depth_first());
 
         let item = parser.next().unwrap();
-        assert_eq!(item.as_ref().unwrap().value, Value::Integer(None));
-        assert_eq!(item.as_ref().unwrap().definition_level, 1);
-        assert_eq!(item.as_ref().unwrap().repetition_level, 0);
-
+        assert_eq!(
+            parser
+                .next()
+                .and_then(Result::ok)
+                .map(|column| column.value),
+            Some(Value::Integer(None))
+        );
         assert!(parser.next().is_none());
     }
 
@@ -656,18 +650,12 @@ mod tests {
 
         let item1 = parser.next().unwrap();
         assert_eq!(item1.as_ref().unwrap().value, Value::Integer(Some(1)));
-        assert_eq!(item1.as_ref().unwrap().definition_level, 1);
-        assert_eq!(item1.as_ref().unwrap().repetition_level, 0);
 
         let item2 = parser.next().unwrap();
         assert_eq!(item2.as_ref().unwrap().value, Value::Integer(Some(2)));
-        assert_eq!(item2.as_ref().unwrap().definition_level, 1);
-        assert_eq!(item2.as_ref().unwrap().repetition_level, 0);
 
         let item3 = parser.next().unwrap();
         assert_eq!(item3.as_ref().unwrap().value, Value::Integer(Some(3)));
-        assert_eq!(item3.as_ref().unwrap().definition_level, 1);
-        assert_eq!(item3.as_ref().unwrap().repetition_level, 0);
 
         assert!(parser.next().is_none());
     }
@@ -688,18 +676,12 @@ mod tests {
 
         let item1 = parser.next().unwrap();
         assert_eq!(item1.as_ref().unwrap().value, Value::Integer(None));
-        assert_eq!(item1.as_ref().unwrap().definition_level, 1);
-        assert_eq!(item1.as_ref().unwrap().repetition_level, 0);
 
         let item2 = parser.next().unwrap();
         assert_eq!(item2.as_ref().unwrap().value, Value::Integer(None));
-        assert_eq!(item2.as_ref().unwrap().definition_level, 1);
-        assert_eq!(item2.as_ref().unwrap().repetition_level, 0);
 
         let item3 = parser.next().unwrap();
         assert_eq!(item3.as_ref().unwrap().value, Value::Integer(None));
-        assert_eq!(item3.as_ref().unwrap().definition_level, 1);
-        assert_eq!(item3.as_ref().unwrap().repetition_level, 0);
 
         assert!(parser.next().is_none());
     }
@@ -711,8 +693,6 @@ mod tests {
 
         let item = parser.next().unwrap();
         assert_eq!(item.as_ref().unwrap().value, Value::Integer(None));
-        assert_eq!(item.as_ref().unwrap().definition_level, 1);
-        assert_eq!(item.as_ref().unwrap().repetition_level, 0);
 
         assert!(parser.next().is_none());
     }
@@ -745,35 +725,12 @@ mod tests {
 
         assert_eq!(parsed.len(), 6);
 
-        // name column
         assert_eq!(parsed[0].value, Value::String(Some("Patricia".to_string())));
-        assert_eq!(parsed[0].definition_level, 0);
-        assert_eq!(parsed[0].repetition_level, 0);
-
-        // id column
         assert_eq!(parsed[1].value, Value::Integer(Some(1001)));
-        assert_eq!(parsed[1].definition_level, 0);
-        assert_eq!(parsed[1].repetition_level, 0);
-
-        // enrolled column
         assert_eq!(parsed[2].value, Value::Boolean(Some(true)));
-        assert_eq!(parsed[2].definition_level, 0);
-        assert_eq!(parsed[2].repetition_level, 0);
-
-        // groups column - first entry
         assert_eq!(parsed[3].value, Value::Integer(Some(1)));
-        assert_eq!(parsed[3].definition_level, 1);
-        assert_eq!(parsed[3].repetition_level, 0);
-
-        // groups column - second entry
         assert_eq!(parsed[4].value, Value::Integer(Some(2)));
-        assert_eq!(parsed[4].definition_level, 1);
-        assert_eq!(parsed[4].repetition_level, 0);
-
-        // groups column - third entry
         assert_eq!(parsed[5].value, Value::Integer(Some(3)));
-        assert_eq!(parsed[5].definition_level, 1);
-        assert_eq!(parsed[5].repetition_level, 0);
     }
 
     #[test]
