@@ -12,6 +12,7 @@ type PathVector = Vec<String>;
 
 trait PathVectorExt {
     fn longest_common_prefix(&self, other: &PathVector) -> PathVector;
+    fn format(&self) -> String;
 }
 
 impl PathVectorExt for PathVector {
@@ -21,6 +22,14 @@ impl PathVectorExt for PathVector {
             .take_while(|(a, b)| a == b)
             .map(|(a, _)| a.clone())
             .collect::<Vec<_>>()
+    }
+
+    fn format(&self) -> String {
+        if self.is_empty() {
+            ".top-level".to_string()
+        } else {
+            self.join(".")
+        }
     }
 }
 

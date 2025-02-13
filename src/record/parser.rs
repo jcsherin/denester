@@ -1,6 +1,6 @@
 use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
 use crate::record::value::{matches_struct, DepthFirstValueIterator};
-use crate::record::{DataType, Field, Schema, Value};
+use crate::record::{DataType, Field, PathVector, PathVectorExt, Schema, Value};
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -261,6 +261,7 @@ impl ListContext {
 struct ValueParserState {
     struct_stack: Vec<Vec<Field>>,
     list_stack: Vec<ListContext>,
+    prev_path: PathVector,
 }
 
 impl<'a> ValueParser<'a> {
@@ -277,6 +278,7 @@ impl<'a> ValueParser<'a> {
             ValueParserState {
                 struct_stack: vec![fields],
                 list_stack: vec![],
+                prev_path: PathVector::default(),
             }
         };
 
@@ -302,6 +304,7 @@ impl<'a> ValueParser<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct StripedColumnValue {
     value: Value,
     repetition_level: RepetitionLevel,
@@ -337,7 +340,11 @@ impl<'a> Iterator for ValueParser<'a> {
             println!("~~~");
             println!("top-level: {}", path.is_empty());
             println!("value: {}", value);
-            println!("path: {}", path.join("."));
+            println!(
+                "path transition {} to {}",
+                self.state.prev_path.format(),
+                path.format()
+            );
 
             // Type-checking for top-level struct value
             if path.is_empty() {
@@ -355,6 +362,32 @@ impl<'a> Iterator for ValueParser<'a> {
                     todo!("handle unexpected value type")
                 }
             }
+
+            // When backtracking in depth-first traversal, and on exiting a struct value it needs
+            // to be removed from the stack.
+            //
+            // For example the previous path is `a.b.c.d` and now has transitioned to `a.x`. To
+            // find the field definition for `x` we need to remove both `c` and `d` from the stack.
+            //
+            // From comparing the paths the common prefix is `a`. Both `b` and `x` are children
+            // and were added to the stack together. So we need to pop the stack twice to remove
+            // `c` and `d`.
+            if path.len() < self.state.prev_path.len() {
+                // backtracking in depth-first traversal
+                let longest_common_prefix = path.longest_common_prefix(&self.state.prev_path);
+                let pop_count = self.state.prev_path.len() - longest_common_prefix.len() - 1;
+                for _ in 0..pop_count {
+                    if let Some(fields) = self.state.struct_stack.pop() {
+                        println!("Popped struct stack: {:?}", fields);
+                    } else {
+                        todo!("No items in struct stack to pop. This is bad!")
+                    }
+                }
+            }
+
+            // Updates transitioned path in state for computing prefix for the next value to
+            // determine stack maintenance.
+            self.state.prev_path = path.clone();
 
             if let Some(field_name) = path.last() {
                 if let Some(field) = self.find_field_by(field_name).map(|field| field.clone()) {
@@ -405,7 +438,12 @@ impl<'a> Iterator for ValueParser<'a> {
                             }
                             Value::Struct(_) => match field.data_type().clone() {
                                 DataType::Struct(fields) => {
-                                    println!("Adding {:?} to state.struct_stack", { &fields });
+                                    let field_names = fields
+                                        .iter()
+                                        .map(|f| f.name())
+                                        .collect::<Vec<_>>()
+                                        .join(", ");
+                                    println!("Adding {} to state.struct_stack", field_names);
                                     let cloned_fields =
                                         fields.iter().map(|f| f.clone()).collect::<Vec<_>>();
                                     self.state.struct_stack.push(cloned_fields);
@@ -480,6 +518,8 @@ impl<'a> Iterator for ValueParser<'a> {
                     } else {
                         todo!("failed shallow type checking")
                     }
+                } else {
+                    todo!("field not found in struct context")
                 }
             }
         }
@@ -741,10 +781,10 @@ mod tests {
         let schema = SchemaBuilder::new("nested_struct", vec![])
             .field(required_group(
                 "a",
-                vec![required_group(
-                    "b",
-                    vec![required_group("c", vec![integer("d")])],
-                )],
+                vec![
+                    required_group("b", vec![required_group("c", vec![integer("d")])]),
+                    optional_group("x", vec![optional_group("y", vec![integer("z")])]),
+                ],
             ))
             .build();
 
@@ -758,6 +798,12 @@ mod tests {
                             .field("c", ValueBuilder::new().field("d", 1).build())
                             .build(),
                     )
+                    .field(
+                        "x",
+                        ValueBuilder::new()
+                            .field("y", ValueBuilder::new().field("z", 2).build())
+                            .build(),
+                    )
                     .build(),
             )
             .build();
@@ -767,6 +813,10 @@ mod tests {
             .into_iter()
             .filter_map(Result::ok)
             .collect::<Vec<_>>();
+
+        println!("{schema}");
+        println!("{value}");
+        println!("{:?}", &parsed);
 
         assert_eq!(parsed.len(), 1);
 
