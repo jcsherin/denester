@@ -9,6 +9,21 @@ pub use schema::{Schema, SchemaBuilder};
 pub use value::Value;
 
 type PathVector = Vec<String>;
+
+trait PathVectorExt {
+    fn longest_common_prefix(&self, other: &PathVector) -> PathVector;
+}
+
+impl PathVectorExt for PathVector {
+    fn longest_common_prefix(&self, other: &PathVector) -> PathVector {
+        self.iter()
+            .zip(other.iter())
+            .take_while(|(a, b)| a == b)
+            .map(|(a, _)| a.clone())
+            .collect::<Vec<_>>()
+    }
+}
+
 struct FieldLevel<'a> {
     iter: std::slice::Iter<'a, Field>,
     path: PathVector,
@@ -17,5 +32,54 @@ struct FieldLevel<'a> {
 impl<'a> FieldLevel<'a> {
     fn new(iter: std::slice::Iter<'a, Field>, path: Vec<String>) -> Self {
         Self { iter, path }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::record::{PathVector, PathVectorExt};
+
+    #[test]
+    fn test_common_path_exists() {
+        let path1: PathVector = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let path2: PathVector = vec!["a".to_string(), "b".to_string(), "d".to_string()];
+
+        assert_eq!(
+            path1.longest_common_prefix(&path2),
+            vec!["a".to_string(), "b".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_common_path_does_not_exist() {
+        let path1: PathVector = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let path2: PathVector = vec!["x".to_string(), "b".to_string(), "d".to_string()];
+
+        assert_eq!(path1.longest_common_prefix(&path2), PathVector::default());
+    }
+
+    #[test]
+    fn test_common_path_against_empty() {
+        let path1: PathVector = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let path2 = PathVector::default();
+
+        assert_eq!(path1.longest_common_prefix(&path2), PathVector::default());
+        assert_eq!(path2.longest_common_prefix(&path1), PathVector::default());
+    }
+
+    #[test]
+    fn test_common_path_backtracking() {
+        // Path transition from a.b.c to a.x in depth-first traversal
+        let path1: PathVector = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let path2: PathVector = vec!["a".to_string(), "x".to_string()];
+
+        assert_eq!(path1.longest_common_prefix(&path2), vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn test_common_path_identical() {
+        let path1 = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+
+        assert_eq!(path1.longest_common_prefix(&path1), path1);
     }
 }
