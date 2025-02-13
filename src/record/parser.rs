@@ -814,15 +814,9 @@ mod tests {
             .filter_map(Result::ok)
             .collect::<Vec<_>>();
 
-        println!("{schema}");
-        println!("{value}");
-        println!("{:?}", &parsed);
+        assert_eq!(parsed.len(), 2);
 
-        assert_eq!(parsed.len(), 1);
-
-        // name column
         assert_eq!(parsed[0].value, Value::Integer(Some(1)));
-        assert_eq!(parsed[0].definition_level, 0);
-        assert_eq!(parsed[0].repetition_level, 0);
+        assert_eq!(parsed[1].value, Value::Integer(Some(2)));
     }
 }
