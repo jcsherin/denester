@@ -13,6 +13,7 @@ type PathVector = Vec<String>;
 trait PathVectorExt {
     fn longest_common_prefix(&self, other: &PathVector) -> PathVector;
     fn format(&self) -> String;
+    fn is_top_level(&self) -> bool;
 }
 
 impl PathVectorExt for PathVector {
@@ -30,6 +31,10 @@ impl PathVectorExt for PathVector {
         } else {
             self.join(".")
         }
+    }
+
+    fn is_top_level(&self) -> bool {
+        self.is_empty()
     }
 }
 

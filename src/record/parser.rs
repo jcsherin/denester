@@ -3,7 +3,7 @@ use crate::record::value::{matches_struct, DepthFirstValueIterator};
 use crate::record::{DataType, Field, PathVector, PathVectorExt, Schema, Value};
 use std::borrow::Cow;
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{write, Display, Formatter};
 
 #[derive(Debug)]
 pub enum ParseError<'a> {
@@ -38,6 +38,16 @@ pub enum ParseError<'a> {
         message: Cow<'a, str>,
         field_path: FieldPath<'a>,
         source: Option<Box<dyn Error + 'static>>,
+    },
+    UnexpectedTopLevelValue {
+        value: &'a Value,
+    },
+    FieldsNotFound {
+        value: &'a Value,
+    },
+    TypeCheckFailed {
+        value: &'a Value,
+        fields: &'a Vec<Field>,
     },
 }
 
@@ -102,6 +112,24 @@ impl<'a> Display for ParseError<'a> {
                 } else {
                     write!(f, "ParseError: {} at {}", message, field_path)
                 }
+            }
+            ParseError::UnexpectedTopLevelValue { value } => {
+                write!(f, "Expected top-level struct, found: {}", value)
+            }
+            ParseError::FieldsNotFound { value } => {
+                write!(f, "Field definitions not found for value: {}", value)
+            }
+            ParseError::TypeCheckFailed { value, fields } => {
+                write!(
+                    f,
+                    "Type checking failed for value: {} with fields: {}",
+                    value,
+                    fields
+                        .iter()
+                        .map(|f| f.name())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
             }
         }
     }
@@ -308,6 +336,34 @@ impl<'a> ValueParser<'a> {
     fn current_list(&self) -> Option<&ListContext> {
         self.state.list_stack.last()
     }
+
+    /// Parses a top-level struct
+    ///
+    /// At the top-level since the path is empty, it is not possible to search for the field by
+    /// name. So we extract the struct properties, and all the field definitions in the context
+    /// stack, and perform a shallow structural type-checking.
+    ///
+    /// # Errors
+    /// The following errors are handled,
+    ///     * The `value` is not a `Value::Struct(_)`
+    ///     * The context stack is empty, and there are no fields to do type-checking
+    ///     * The shallow structural type-checking failed
+    fn parse_top_level_struct<'b>(&'b self, value: &'b Value) -> Result<(), ParseError<'b>> {
+        let props = match value {
+            Value::Struct(props) => props,
+            _ => return Err(ParseError::UnexpectedTopLevelValue { value }),
+        };
+
+        let fields = self
+            .current_fields()
+            .ok_or(ParseError::FieldsNotFound { value })?;
+
+        if !matches_struct(props, &fields) {
+            return Err(ParseError::TypeCheckFailed { value, fields });
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -352,23 +408,12 @@ impl<'a> Iterator for ValueParser<'a> {
                 path.format()
             );
 
-            // Type-checking for top-level struct value
-            if path.is_empty() {
-                if let Value::Struct(named_values) = value {
-                    if let Some(fields) = self.current_fields() {
-                        for field in fields {
-                            println!("schema field: {}", field);
-                        }
-                        if matches_struct(named_values, &fields) {
-                            continue;
-                        } else {
-                            todo!("handle type checking failed for top-level value")
-                        }
-                    } else {
-                        todo!("handle missing field definitions")
+            if path.is_top_level() {
+                match self.parse_top_level_struct(value) {
+                    Ok(_) => continue,
+                    Err(_) => {
+                        todo!("handle error while parsing top level struct")
                     }
-                } else {
-                    todo!("handle unexpected value type")
                 }
             }
 
