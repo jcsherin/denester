@@ -333,10 +333,6 @@ impl<'a> ValueParser<'a> {
             .and_then(|fields| fields.iter().find(|f| f.name() == name))
     }
 
-    fn current_list(&self) -> Option<&ListContext> {
-        self.state.list_stack.last()
-    }
-
     /// Parses a top-level struct
     ///
     /// At the top-level since the path is empty, it is not possible to search for the field by
@@ -594,7 +590,22 @@ impl<'a> Iterator for ValueParser<'a> {
                         // Here we know the list item type, and also track state about the progress
                         // we have made in the list. We know the index position of this list item
                         // in the list container.
-                        if let Some(list_context) = self.current_list() {
+                        if let Some(list_context) = self.state.list_stack.last_mut() {
+                            // Definition, repetition levels
+                            let (repetition_level, definition_level) =
+                                match self.state.computed_levels.last() {
+                                    None => todo!("missing level context for list item"),
+                                    Some(level) => {
+                                        if list_context.position() > 0 {
+                                            (level.repetition_depth, level.definition_level)
+                                        } else {
+                                            (level.repetition_level, level.definition_level)
+                                        }
+                                    }
+                                };
+
+                            list_context.increment();
+
                             if field_name == list_context.field_name() {
                                 match field.data_type() {
                                     DataType::List(item_type) => {
@@ -603,33 +614,21 @@ impl<'a> Iterator for ValueParser<'a> {
                                                 if !field.is_optional() && v.is_none() {
                                                     todo!("list item is not nullable")
                                                 }
-                                                if let Some(level_context) =
-                                                    self.state.computed_levels.last()
-                                                {
-                                                    return Some(Ok(StripedColumnValue::new(
-                                                        Value::Boolean(*v),
-                                                        0,
-                                                        level_context.definition_level,
-                                                    )));
-                                                } else {
-                                                    todo!("level context stack is empty for List<boolean> value");
-                                                }
+                                                return Some(Ok(StripedColumnValue::new(
+                                                    Value::Boolean(*v),
+                                                    repetition_level,
+                                                    definition_level,
+                                                )));
                                             }
                                             (Value::Integer(v), DataType::Integer) => {
                                                 if !field.is_optional() && v.is_none() {
                                                     todo!("list item is not nullable")
                                                 }
-                                                if let Some(level_context) =
-                                                    self.state.computed_levels.last()
-                                                {
-                                                    return Some(Ok(StripedColumnValue::new(
-                                                        Value::Integer(*v),
-                                                        0,
-                                                        level_context.definition_level,
-                                                    )));
-                                                } else {
-                                                    todo!("level context stack is empty for List<boolean> value");
-                                                }
+                                                return Some(Ok(StripedColumnValue::new(
+                                                    Value::Integer(*v),
+                                                    repetition_level,
+                                                    definition_level,
+                                                )));
                                             }
                                             (Value::String(v), DataType::String) => {
                                                 if !field.is_optional() && v.is_none() {
@@ -637,8 +636,8 @@ impl<'a> Iterator for ValueParser<'a> {
                                                 }
                                                 return Some(Ok(StripedColumnValue::new(
                                                     Value::String(v.clone()),
-                                                    0,
-                                                    0,
+                                                    repetition_level,
+                                                    definition_level,
                                                 )));
                                             }
                                             (
@@ -884,6 +883,10 @@ mod tests {
         assert_eq!(parsed[3].definition_level, 1);
         assert_eq!(parsed[4].definition_level, 1);
         assert_eq!(parsed[5].definition_level, 1);
+
+        assert_eq!(parsed[3].repetition_level, 0);
+        assert_eq!(parsed[4].repetition_level, 1);
+        assert_eq!(parsed[5].repetition_level, 1);
     }
 
     #[test]
