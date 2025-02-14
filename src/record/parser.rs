@@ -192,7 +192,7 @@ type DefinitionLevel = u8;
 type RepetitionLevel = u8;
 type RepetitionDepth = u8;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct LevelContext {
     definition_level: DefinitionLevel,
     repetition_depth: RepetitionDepth,
@@ -201,14 +201,18 @@ struct LevelContext {
 
 impl LevelContext {
     fn with_field(&self, field: &Field) -> Self {
-        let increment = DefinitionLevel::from(
-            matches!(field.data_type(), DataType::List(_)) || field.is_optional(),
-        );
+        let is_optional = field.is_optional();
+        let is_repeated = matches!(field.data_type(), DataType::List(_));
+
+        let definition_level =
+            self.definition_level + DefinitionLevel::from(is_optional || is_repeated);
+        let repetition_depth = self.repetition_depth + RepetitionDepth::from(is_repeated);
+        let repetition_level = self.repetition_level;
 
         Self {
-            definition_level: self.definition_level + increment,
-            repetition_depth: self.repetition_depth,
-            repetition_level: self.repetition_level,
+            definition_level,
+            repetition_depth,
+            repetition_level,
         }
     }
 }
@@ -262,6 +266,7 @@ struct ValueParserState {
     struct_stack: Vec<Vec<Field>>,
     list_stack: Vec<ListContext>,
     prev_path: PathVector,
+    computed_levels: Vec<LevelContext>,
 }
 
 impl<'a> ValueParser<'a> {
@@ -279,6 +284,7 @@ impl<'a> ValueParser<'a> {
                 struct_stack: vec![fields],
                 list_stack: vec![],
                 prev_path: PathVector::default(),
+                computed_levels: vec![],
             }
         };
 
@@ -375,9 +381,10 @@ impl<'a> Iterator for ValueParser<'a> {
             // From comparing the paths the common prefix is `a`. Both `b` and `x` are children
             // and were added to the stack together. So we need to pop the stack twice to remove
             // `c` and `d`.
+            let longest_common_prefix = path.longest_common_prefix(&self.state.prev_path);
+
             if path.len() < self.state.prev_path.len() {
                 // backtracking in depth-first traversal
-                let longest_common_prefix = path.longest_common_prefix(&self.state.prev_path);
                 let pop_count = self.state.prev_path.len() - longest_common_prefix.len() - 1;
                 for _ in 0..pop_count {
                     if let Some(fields) = self.state.struct_stack.pop() {
@@ -390,24 +397,100 @@ impl<'a> Iterator for ValueParser<'a> {
 
             // Updates transitioned path in state for computing prefix for the next value to
             // determine stack maintenance.
+            let tmp_prev_path = self.state.prev_path.clone();
             self.state.prev_path = path.clone();
 
             if let Some(field_name) = path.last() {
                 if let Some(field) = self.find_field_by(field_name).map(|field| field.clone()) {
                     if value.matches_type_shallow(&field) {
+                        /// # Level Computation
+                        ///
+                        /// ## Definition Levels
+                        /// The definition level of a column value is the number of fields in its path which
+                        /// are undefined. Optional or repeated fields can be undefined in a path.
+                        let current_level_context =
+                            if let Some(prev) = self.state.computed_levels.last() {
+                                prev.with_field(&field)
+                            } else {
+                                LevelContext::default().with_field(&field)
+                            };
+                        if let Some(pop_count) = self
+                            .state
+                            .prev_path
+                            .len()
+                            .checked_sub(longest_common_prefix.len())
+                        {
+                            if tmp_prev_path.is_empty() {
+                                /// But transition from 'a' to 'b' should have something to pop.
+                                /// Transitions from .top-level to 'a' on the other hand has an
+                                /// empty stack and therefore nothing needs to be popped.
+                                println!(
+                                    "nothing to pop at the top-level transition {} to {}",
+                                    tmp_prev_path.format(),
+                                    path.format()
+                                );
+                            } else {
+                                println!(
+                                    "prev_path: {} computed_levels: {}, pop_count: {}",
+                                    tmp_prev_path.format(),
+                                    self.state.computed_levels.len(),
+                                    pop_count
+                                );
+                                for _ in 0..pop_count {
+                                    if let Some(popped) = self.state.computed_levels.pop() {
+                                        println!(
+                                            "{} Pop level context {:?}",
+                                            path.format(),
+                                            popped
+                                        );
+                                    } else {
+                                        todo!("computed levels stack is empty!")
+                                    }
+                                }
+                            }
+                            println!(
+                                "{} Push level context {:?}",
+                                path.format(),
+                                current_level_context
+                            );
+                            self.state.computed_levels.push(current_level_context);
+                        } else {
+                            todo!("level context pop count subtraction overflowed")
+                        }
+
                         match value {
                             Value::Boolean(v) => {
-                                return Some(Ok(StripedColumnValue::new(Value::Boolean(*v), 0, 0)))
+                                if let Some(level_context) = self.state.computed_levels.last() {
+                                    return Some(Ok(StripedColumnValue::new(
+                                        Value::Boolean(*v),
+                                        0,
+                                        level_context.definition_level,
+                                    )));
+                                } else {
+                                    todo!("level context stack is empty for boolean value");
+                                }
                             }
                             Value::Integer(v) => {
-                                return Some(Ok(StripedColumnValue::new(Value::Integer(*v), 0, 0)))
+                                if let Some(level_context) = self.state.computed_levels.last() {
+                                    return Some(Ok(StripedColumnValue::new(
+                                        Value::Integer(*v),
+                                        0,
+                                        level_context.definition_level,
+                                    )));
+                                } else {
+                                    todo!("level context stack is empty for integer value")
+                                }
                             }
                             Value::String(v) => {
-                                return Some(Ok(StripedColumnValue::new(
-                                    Value::String(v.clone()),
-                                    0,
-                                    0,
-                                )))
+                                if let Some(level_context) = self.state.computed_levels.last() {
+                                    return Some(Ok(StripedColumnValue::new(
+                                        Value::String(v.clone()),
+                                        0,
+                                        level_context.definition_level,
+                                    )));
+                                } else {
+                                    todo!("level context stack is empty for integer value")
+                                }
                             }
                             Value::List(items) => {
                                 // Repeated values in a list container.
@@ -475,21 +558,33 @@ impl<'a> Iterator for ValueParser<'a> {
                                                 if !field.is_optional() && v.is_none() {
                                                     todo!("list item is not nullable")
                                                 }
-                                                return Some(Ok(StripedColumnValue::new(
-                                                    Value::Boolean(*v),
-                                                    0,
-                                                    0,
-                                                )));
+                                                if let Some(level_context) =
+                                                    self.state.computed_levels.last()
+                                                {
+                                                    return Some(Ok(StripedColumnValue::new(
+                                                        Value::Boolean(*v),
+                                                        0,
+                                                        level_context.definition_level,
+                                                    )));
+                                                } else {
+                                                    todo!("level context stack is empty for List<boolean> value");
+                                                }
                                             }
                                             (Value::Integer(v), DataType::Integer) => {
                                                 if !field.is_optional() && v.is_none() {
                                                     todo!("list item is not nullable")
                                                 }
-                                                return Some(Ok(StripedColumnValue::new(
-                                                    Value::Integer(*v),
-                                                    0,
-                                                    0,
-                                                )));
+                                                if let Some(level_context) =
+                                                    self.state.computed_levels.last()
+                                                {
+                                                    return Some(Ok(StripedColumnValue::new(
+                                                        Value::Integer(*v),
+                                                        0,
+                                                        level_context.definition_level,
+                                                    )));
+                                                } else {
+                                                    todo!("level context stack is empty for List<boolean> value");
+                                                }
                                             }
                                             (Value::String(v), DataType::String) => {
                                                 if !field.is_optional() && v.is_none() {
@@ -554,6 +649,7 @@ mod tests {
 
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].value, Value::Integer(None));
+        assert_eq!(parsed[0].definition_level, 1);
     }
 
     #[test]
@@ -582,6 +678,7 @@ mod tests {
 
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].value, Value::Integer(Some(10)));
+        assert_eq!(parsed[0].definition_level, 1);
     }
 
     #[test]
@@ -596,6 +693,7 @@ mod tests {
 
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].value, Value::Integer(Some(10)));
+        assert_eq!(parsed[0].definition_level, 0);
     }
 
     #[test]
@@ -650,12 +748,15 @@ mod tests {
 
         let item1 = parser.next().unwrap();
         assert_eq!(item1.as_ref().unwrap().value, Value::Integer(Some(1)));
+        assert_eq!(item1.as_ref().unwrap().definition_level, 1);
 
         let item2 = parser.next().unwrap();
         assert_eq!(item2.as_ref().unwrap().value, Value::Integer(Some(2)));
+        assert_eq!(item2.as_ref().unwrap().definition_level, 1);
 
         let item3 = parser.next().unwrap();
         assert_eq!(item3.as_ref().unwrap().value, Value::Integer(Some(3)));
+        assert_eq!(item3.as_ref().unwrap().definition_level, 1);
 
         assert!(parser.next().is_none());
     }
@@ -731,6 +832,13 @@ mod tests {
         assert_eq!(parsed[3].value, Value::Integer(Some(1)));
         assert_eq!(parsed[4].value, Value::Integer(Some(2)));
         assert_eq!(parsed[5].value, Value::Integer(Some(3)));
+
+        assert_eq!(parsed[0].definition_level, 0);
+        assert_eq!(parsed[1].definition_level, 0);
+        assert_eq!(parsed[2].definition_level, 0);
+        assert_eq!(parsed[3].definition_level, 1);
+        assert_eq!(parsed[4].definition_level, 1);
+        assert_eq!(parsed[5].definition_level, 1);
     }
 
     #[test]
@@ -775,5 +883,8 @@ mod tests {
 
         assert_eq!(parsed[0].value, Value::Integer(Some(1)));
         assert_eq!(parsed[1].value, Value::Integer(Some(2)));
+
+        assert_eq!(parsed[0].definition_level, 0);
+        assert_eq!(parsed[1].definition_level, 2);
     }
 }
