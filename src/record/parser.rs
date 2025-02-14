@@ -694,6 +694,7 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].value, Value::Integer(None));
         assert_eq!(parsed[0].definition_level, 1);
+        assert_eq!(parsed[0].repetition_level, 0);
     }
 
     #[test]
@@ -723,6 +724,7 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].value, Value::Integer(Some(10)));
         assert_eq!(parsed[0].definition_level, 1);
+        assert_eq!(parsed[0].repetition_level, 0);
     }
 
     #[test]
@@ -738,6 +740,7 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].value, Value::Integer(Some(10)));
         assert_eq!(parsed[0].definition_level, 0);
+        assert_eq!(parsed[0].repetition_level, 0);
     }
 
     #[test]
@@ -793,14 +796,17 @@ mod tests {
         let item1 = parser.next().unwrap();
         assert_eq!(item1.as_ref().unwrap().value, Value::Integer(Some(1)));
         assert_eq!(item1.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item1.as_ref().unwrap().repetition_level, 0);
 
         let item2 = parser.next().unwrap();
         assert_eq!(item2.as_ref().unwrap().value, Value::Integer(Some(2)));
         assert_eq!(item2.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item2.as_ref().unwrap().repetition_level, 1);
 
         let item3 = parser.next().unwrap();
         assert_eq!(item3.as_ref().unwrap().value, Value::Integer(Some(3)));
         assert_eq!(item3.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item3.as_ref().unwrap().repetition_level, 1);
 
         assert!(parser.next().is_none());
     }
@@ -821,12 +827,18 @@ mod tests {
 
         let item1 = parser.next().unwrap();
         assert_eq!(item1.as_ref().unwrap().value, Value::Integer(None));
+        assert_eq!(item1.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item1.as_ref().unwrap().repetition_level, 0);
 
         let item2 = parser.next().unwrap();
         assert_eq!(item2.as_ref().unwrap().value, Value::Integer(None));
+        assert_eq!(item2.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item2.as_ref().unwrap().repetition_level, 1);
 
         let item3 = parser.next().unwrap();
         assert_eq!(item3.as_ref().unwrap().value, Value::Integer(None));
+        assert_eq!(item3.as_ref().unwrap().definition_level, 1);
+        assert_eq!(item3.as_ref().unwrap().repetition_level, 1);
 
         assert!(parser.next().is_none());
     }
@@ -934,5 +946,8 @@ mod tests {
 
         assert_eq!(parsed[0].definition_level, 0);
         assert_eq!(parsed[1].definition_level, 2);
+
+        assert_eq!(parsed[0].repetition_level, 0);
+        assert_eq!(parsed[1].repetition_level, 0);
     }
 }
