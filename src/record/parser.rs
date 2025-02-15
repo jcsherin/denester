@@ -270,6 +270,69 @@ impl<'a> ValueParser<'a> {
             Err(_) => Err(ParseError::TypeCheckFailed { value, fields }),
         }
     }
+
+    /// Maintains level context state for column striping
+    ///
+    /// Updates the level context which contains the definition level, repetition depth and the
+    /// repetition level of the value node. A new level context is added to the stack during
+    /// depth-first traversal. On backtracking the common ancestor path prefix is used to figure out
+    /// how many level contexts needs to popped from the stack.
+    ///
+    /// TODO: refactor
+    /// TODO: Result return type, handle errors
+    fn update_level_context(
+        &mut self,
+        field: &Field,
+        current_path: &PathVector,
+        prev_path: &PathVector,
+        common_prefix: &PathVector,
+    ) {
+        let curr = match self.state.computed_levels.last() {
+            None => LevelContext::default().with_field(field),
+            Some(prev) => prev.with_field(field),
+        };
+
+
+        if let Some(pop_count) = self
+            .state
+            .prev_path
+            .len()
+            .checked_sub(common_prefix.len())
+        {
+            if prev_path.is_empty() {
+                // But transition from 'a' to 'b' should have something to pop.
+                // Transitions from .top-level to 'a' on the other hand has an
+                // empty stack and therefore nothing needs to be popped.
+                println!(
+                    "nothing to pop at the top-level transition {} to {}",
+                    prev_path.format(),
+                    current_path.format()
+                );
+            } else {
+                println!(
+                    "prev_path: {} computed_levels: {}, pop_count: {}",
+                    prev_path.format(),
+                    self.state.computed_levels.len(),
+                    pop_count
+                );
+                for _ in 0..pop_count {
+                    if let Some(popped) = self.state.computed_levels.pop() {
+                        println!("{} Pop level context {:?}", current_path.format(), popped);
+                    } else {
+                        todo!("computed levels stack is empty!")
+                    }
+                }
+            }
+            println!(
+                "{} Push level context {:?}",
+                current_path.format(),
+                curr
+            );
+            self.state.computed_levels.push(curr);
+        } else {
+            todo!("level context pop count subtraction overflowed")
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -354,60 +417,12 @@ impl<'a> Iterator for ValueParser<'a> {
             if let Some(field_name) = path.last() {
                 if let Some(field) = self.find_field_by(field_name).map(|field| field.clone()) {
                     if value.type_check_shallow(&field).is_ok() {
-                        /// # Level Computation
-                        ///
-                        /// ## Definition Levels
-                        /// The definition level of a column value is the number of fields in its path which
-                        /// are undefined. Optional or repeated fields can be undefined in a path.
-                        let current_level_context =
-                            if let Some(prev) = self.state.computed_levels.last() {
-                                prev.with_field(&field)
-                            } else {
-                                LevelContext::default().with_field(&field)
-                            };
-                        if let Some(pop_count) = self
-                            .state
-                            .prev_path
-                            .len()
-                            .checked_sub(longest_common_prefix.len())
-                        {
-                            if tmp_prev_path.is_empty() {
-                                /// But transition from 'a' to 'b' should have something to pop.
-                                /// Transitions from .top-level to 'a' on the other hand has an
-                                /// empty stack and therefore nothing needs to be popped.
-                                println!(
-                                    "nothing to pop at the top-level transition {} to {}",
-                                    tmp_prev_path.format(),
-                                    path.format()
-                                );
-                            } else {
-                                println!(
-                                    "prev_path: {} computed_levels: {}, pop_count: {}",
-                                    tmp_prev_path.format(),
-                                    self.state.computed_levels.len(),
-                                    pop_count
-                                );
-                                for _ in 0..pop_count {
-                                    if let Some(popped) = self.state.computed_levels.pop() {
-                                        println!(
-                                            "{} Pop level context {:?}",
-                                            path.format(),
-                                            popped
-                                        );
-                                    } else {
-                                        todo!("computed levels stack is empty!")
-                                    }
-                                }
-                            }
-                            println!(
-                                "{} Push level context {:?}",
-                                path.format(),
-                                current_level_context
-                            );
-                            self.state.computed_levels.push(current_level_context);
-                        } else {
-                            todo!("level context pop count subtraction overflowed")
-                        }
+                        self.update_level_context(
+                            &field,
+                            &path,
+                            &tmp_prev_path,
+                            &longest_common_prefix,
+                        );
 
                         match value {
                             Value::Boolean(v) => {
@@ -775,7 +790,7 @@ mod tests {
                 repeated_integer("groups"),
             ],
         )
-        .build();
+            .build();
 
         let value = ValueBuilder::new()
             .field("name", "Patricia")
