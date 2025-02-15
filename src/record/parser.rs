@@ -1,9 +1,8 @@
 use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
-use crate::record::value::{matches_struct, DepthFirstValueIterator};
+use crate::record::value::DepthFirstValueIterator;
 use crate::record::{DataType, Field, PathVector, PathVectorExt, Schema, Value};
-use std::borrow::Cow;
 use std::error::Error;
-use std::fmt::{write, Display, Formatter};
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum ParseError<'a> {
@@ -266,11 +265,10 @@ impl<'a> ValueParser<'a> {
             .current_fields()
             .ok_or(ParseError::FieldsNotFound { value })?;
 
-        if !matches_struct(props, &fields) {
-            return Err(ParseError::TypeCheckFailed { value, fields });
+        match Value::type_check_struct_shallow(props, &fields) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(ParseError::TypeCheckFailed { value, fields }),
         }
-
-        Ok(())
     }
 }
 
@@ -355,7 +353,7 @@ impl<'a> Iterator for ValueParser<'a> {
 
             if let Some(field_name) = path.last() {
                 if let Some(field) = self.find_field_by(field_name).map(|field| field.clone()) {
-                    if value.matches_type_shallow(&field) {
+                    if value.type_check_shallow(&field).is_ok() {
                         /// # Level Computation
                         ///
                         /// ## Definition Levels

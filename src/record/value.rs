@@ -5,7 +5,7 @@ use std::fmt::Formatter;
 
 /// None is used to represent NULL values corresponding to the type
 /// `Value::Boolean(None)` is a `Boolean` NULL value.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Value {
     Boolean(Option<bool>),
     Integer(Option<i64>),
@@ -159,60 +159,145 @@ impl Value {
     /// For repeated values `Value::List(_)` the individual items in the list are not type checked.
     /// Similarly, for records `Value::Struct(_)` the field names should match. The values are not
     /// type checked.
-    pub fn matches_type_shallow(&self, field: &Field) -> bool {
+    pub fn type_check_shallow(&self, field: &Field) -> Result<(), TypeCheckError> {
         match (self, field.data_type()) {
-            // matches both scalar type and nullability
-            (Value::Boolean(val), DataType::Boolean) => !(val.is_none() && !field.is_optional()),
-            (Value::Integer(val), DataType::Integer) => !(val.is_none() && !field.is_optional()),
-            (Value::String(val), DataType::String) => !(val.is_none() && !field.is_optional()),
-            (Value::List(_), DataType::List(_)) => true,
-            (Value::Struct(values), DataType::Struct(fields)) => matches_struct(values, fields),
-            _ => false,
+            (Value::Boolean(_), DataType::Boolean)
+            | (Value::Integer(_), DataType::Integer)
+            | (Value::String(_), DataType::String) => {
+                if field.is_required() && self.is_null() {
+                    Err(TypeCheckError::RequiredFieldIsNull {
+                        value: self.clone(),
+                        field: field.clone(),
+                    })
+                } else {
+                    Ok(())
+                }
+            }
+            (Value::List(_), DataType::List(_)) => Ok(()),
+            (Value::Struct(props), DataType::Struct(fields)) => {
+                Self::type_check_struct_shallow(props, fields)
+            }
+            _ => Err(TypeCheckError::DataTypeMismatch {
+                value: self.clone(),
+                field: field.clone(),
+            }),
+        }
+    }
+
+    /// Check if the value is NULL
+    ///
+    /// For scalar types `None` means the value is NULL.
+    /// A List type cannot be NULL, but it can be empty.
+    /// A Struct type cannot be NULL, but it can have no properties (be empty).
+    pub fn is_null(&self) -> bool {
+        match self {
+            Value::Boolean(b) => b.is_none(),
+            Value::Integer(i) => i.is_none(),
+            Value::String(s) => s.is_none(),
+            Value::List(_) | Value::Struct(_) => false,
+        }
+    }
+
+    /// Performs shallow type checking of struct
+    ///
+    /// - Duplicate names are not allowed.
+    /// - All required fields must be present.
+    /// - Names in values must exist in field definitions.
+    /// - Order of values can differ from field definitions.
+    pub fn type_check_struct_shallow(
+        props: &Vec<(String, Value)>,
+        fields: &Vec<Field>,
+    ) -> Result<(), TypeCheckError> {
+        // If there are more named value pairs than defined fields in the struct, it cannot be a
+        // valid match. Fewer values are allowed as some fields maybe repeated/optional.
+        if props.len() > fields.len() {
+            return Err(TypeCheckError::StructSchemaMismatch {
+                props: props.clone(),
+                fields: fields.clone(),
+            });
+        }
+
+        // Duplicate names are not allowed
+        let mut seen_names = HashSet::new();
+        for (name, _) in props {
+            if !seen_names.insert(name) {
+                return Err(TypeCheckError::StructDuplicateProperty {
+                    dup: name.clone(),
+                    props: props.clone(),
+                    fields: fields.clone(),
+                });
+            }
+        }
+
+        let mut field_names = HashSet::new();
+        let mut required_fields = HashSet::new();
+        for field in fields {
+            field_names.insert(field.name());
+            if field.is_required() {
+                required_fields.insert(field.name());
+            }
+        }
+
+        let mut present_fields = HashSet::new();
+        for (name, _) in props {
+            if !field_names.contains(name.as_str()) {
+                return Err(TypeCheckError::StructUnknownProperty {
+                    unknown: name.clone(),
+                    props: props.clone(),
+                    fields: fields.clone(),
+                });
+            }
+            present_fields.insert(name.as_str());
+        }
+
+        // All required fields are present
+        if !required_fields.is_subset(&present_fields) {
+            let missing = required_fields
+                .difference(&present_fields)
+                .copied()
+                .map(|name| name.to_string())
+                .collect::<Vec<_>>();
+            Err(TypeCheckError::RequiredFieldsAreMissing {
+                missing,
+                props: props.clone(),
+                fields: fields.clone(),
+            })
+        } else {
+            Ok(())
         }
     }
 }
 
-/// Performs shallow type checking of struct
-///
-/// - Duplicate names are not allowed.
-/// - All required fields must be present.
-/// - Names in values must exist in field definitions.
-/// - Order of values can differ from field definitions.
-pub fn matches_struct(values: &Vec<(String, Value)>, fields: &Vec<Field>) -> bool {
-    // If there are more named value pairs than defined fields in the struct, it cannot be a
-    // valid match. Fewer values are allowed as some fields maybe repeated/optional.
-    if values.len() > fields.len() {
-        return false;
-    }
-
-    // Duplicate names are not allowed
-    let mut seen_names = HashSet::new();
-    for (name, _) in values {
-        if !seen_names.insert(name) {
-            return false;
-        }
-    }
-
-    let mut field_names = HashSet::new();
-    let mut required_fields = HashSet::new();
-    for field in fields {
-        field_names.insert(field.name());
-        if field.is_required() {
-            required_fields.insert(field.name());
-        }
-    }
-
-    let mut present_fields = HashSet::new();
-    for (name, _) in values {
-        if !field_names.contains(name.as_str()) {
-            return false;
-        }
-        present_fields.insert(name.as_str());
-    }
-
-    // All required fields are present
-    required_fields.is_subset(&present_fields)
+pub enum TypeCheckError {
+    DataTypeMismatch {
+        value: Value,
+        field: Field,
+    },
+    RequiredFieldIsNull {
+        value: Value,
+        field: Field,
+    },
+    RequiredFieldsAreMissing {
+        missing: Vec<String>,
+        props: Vec<(String, Value)>,
+        fields: Vec<Field>,
+    },
+    StructSchemaMismatch {
+        props: Vec<(String, Value)>,
+        fields: Vec<Field>,
+    },
+    StructDuplicateProperty {
+        dup: String,
+        props: Vec<(String, Value)>,
+        fields: Vec<Field>,
+    },
+    StructUnknownProperty {
+        unknown: String,
+        props: Vec<(String, Value)>,
+        fields: Vec<Field>,
+    },
 }
+
 impl<'a> Iterator for DepthFirstValueIterator<'a> {
     type Item = (&'a Value, PathVector);
 
