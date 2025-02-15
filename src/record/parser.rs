@@ -2,7 +2,7 @@ use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
 use crate::record::value::DepthFirstValueIterator;
 use crate::record::{DataType, Field, PathVector, PathVectorExt, Schema, Value};
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{write, Display, Formatter};
 
 #[derive(Debug)]
 pub enum ParseError<'a> {
@@ -21,6 +21,9 @@ pub enum ParseError<'a> {
     TypeCheckFailed {
         value: &'a Value,
         fields: &'a Vec<Field>,
+    },
+    MissingLevelContext {
+        path: PathVector,
     },
 }
 
@@ -49,6 +52,13 @@ impl<'a> Display for ParseError<'a> {
                         .map(|f| f.name())
                         .collect::<Vec<_>>()
                         .join(",")
+                )
+            }
+            ParseError::MissingLevelContext { path } => {
+                write!(
+                    f,
+                    "Level context missing for computing levels. Path: {}",
+                    path.format()
                 )
             }
         }
@@ -292,13 +302,7 @@ impl<'a> ValueParser<'a> {
             Some(prev) => prev.with_field(field),
         };
 
-
-        if let Some(pop_count) = self
-            .state
-            .prev_path
-            .len()
-            .checked_sub(common_prefix.len())
-        {
+        if let Some(pop_count) = self.state.prev_path.len().checked_sub(common_prefix.len()) {
             if prev_path.is_empty() {
                 // But transition from 'a' to 'b' should have something to pop.
                 // Transitions from .top-level to 'a' on the other hand has an
@@ -323,14 +327,26 @@ impl<'a> ValueParser<'a> {
                     }
                 }
             }
-            println!(
-                "{} Push level context {:?}",
-                current_path.format(),
-                curr
-            );
+            println!("{} Push level context {:?}", current_path.format(), curr);
             self.state.computed_levels.push(curr);
         } else {
             todo!("level context pop count subtraction overflowed")
+        }
+    }
+
+    fn get_column_value(
+        &self,
+        path: &PathVector,
+        value: &Value,
+    ) -> Result<StripedColumnValue, ParseError<'a>> {
+        if let Some(level_context) = self.state.computed_levels.last() {
+            Ok(StripedColumnValue::new(
+                value.clone(),
+                level_context.repetition_level,
+                level_context.definition_level,
+            ))
+        } else {
+            Err(ParseError::MissingLevelContext { path: path.clone() })
         }
     }
 }
@@ -425,38 +441,8 @@ impl<'a> Iterator for ValueParser<'a> {
                         );
 
                         match value {
-                            Value::Boolean(v) => {
-                                if let Some(level_context) = self.state.computed_levels.last() {
-                                    return Some(Ok(StripedColumnValue::new(
-                                        Value::Boolean(*v),
-                                        0,
-                                        level_context.definition_level,
-                                    )));
-                                } else {
-                                    todo!("level context stack is empty for boolean value");
-                                }
-                            }
-                            Value::Integer(v) => {
-                                if let Some(level_context) = self.state.computed_levels.last() {
-                                    return Some(Ok(StripedColumnValue::new(
-                                        Value::Integer(*v),
-                                        0,
-                                        level_context.definition_level,
-                                    )));
-                                } else {
-                                    todo!("level context stack is empty for integer value")
-                                }
-                            }
-                            Value::String(v) => {
-                                if let Some(level_context) = self.state.computed_levels.last() {
-                                    return Some(Ok(StripedColumnValue::new(
-                                        Value::String(v.clone()),
-                                        0,
-                                        level_context.definition_level,
-                                    )));
-                                } else {
-                                    todo!("level context stack is empty for integer value")
-                                }
+                            Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
+                                return Some(self.get_column_value(&path, &value));
                             }
                             Value::List(items) => {
                                 // Repeated values in a list container.
@@ -790,7 +776,7 @@ mod tests {
                 repeated_integer("groups"),
             ],
         )
-            .build();
+        .build();
 
         let value = ValueBuilder::new()
             .field("name", "Patricia")
