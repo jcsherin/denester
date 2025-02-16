@@ -218,24 +218,41 @@ struct ValueParserState {
     computed_levels: Vec<LevelContext>,
 }
 
-impl<'a> ValueParser<'a> {
-    fn new(schema: &'a Schema, value_iter: DepthFirstValueIterator<'a>) -> Self {
-        let paths = PathMetadataIterator::new(schema).collect::<Vec<_>>();
-        let state = if schema.is_empty() {
-            ValueParserState::default()
+impl ValueParserState {
+    pub fn new(schema: &Schema) -> Self {
+        if schema.is_empty() {
+            Self::default()
         } else {
-            let fields = schema
-                .fields()
-                .iter()
-                .map(|f| f.clone())
-                .collect::<Vec<_>>();
-            ValueParserState {
+            let fields = schema.fields().to_vec();
+
+            Self {
                 struct_stack: vec![fields],
                 list_stack: vec![],
                 prev_path: PathVector::default(),
                 computed_levels: vec![],
             }
-        };
+        }
+    }
+
+    pub fn push_list(&mut self, field: &Field, len: usize) {
+        self.list_stack
+            .push(ListContext::new(field.name().to_string(), len));
+    }
+
+    pub fn push_struct(&mut self, field: &Field) {
+        match field.data_type() {
+            DataType::Boolean | DataType::Integer | DataType::String | DataType::List(_) => {
+                unreachable!("expected struct {}", field)
+            }
+            DataType::Struct(fields) => self.struct_stack.push(fields.to_vec()),
+        }
+    }
+}
+
+impl<'a> ValueParser<'a> {
+    fn new(schema: &'a Schema, value_iter: DepthFirstValueIterator<'a>) -> Self {
+        let paths = PathMetadataIterator::new(schema).collect::<Vec<_>>();
+        let state = ValueParserState::new(schema);
 
         Self {
             schema,
@@ -444,51 +461,16 @@ impl<'a> Iterator for ValueParser<'a> {
                             Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
                                 return Some(self.get_column_value(&path, &value));
                             }
+                            Value::List(items) if items.is_empty() =>
+                                todo!("get leaf field datatype from path metadata and return column value"),
                             Value::List(items) => {
-                                // Repeated values in a list container.
-                                //
-                                // The value iterator will yield the list items one by one. To
-                                // keep track that we are within a list context across multiple
-                                // `next()` calls of this iterator the state is maintained in a
-                                // stack.
-                                //
-                                // A stack allows us to maintain context for arbitrary nesting. A
-                                // list field type maybe a struct, and it can contain a field which
-                                // is a list and so on.
-                                if !items.is_empty() {
-                                    self.state.list_stack.push(ListContext::new(
-                                        field_name.to_string(),
-                                        items.len(),
-                                    ));
-                                    continue;
-                                } else {
-                                    // Do not track state for an empty list. Here we return a scalar
-                                    // column value immediately by examining the PathMetadata which
-                                    // partially matches this path, to return the column or columns
-                                    // which are terminated because this list is empty.
-                                    //
-                                    // It can be multiple column values because the list inner type
-                                    // could be a struct with multiple fields. In the case of scalar
-                                    // list type we only need to emit a single null value with that
-                                    // item type here.
-                                    todo!("get leaf field datatype from path metadata and return column value")
-                                }
+                                self.state.push_list(&field, items.len());
+                                continue;
                             }
-                            Value::Struct(_) => match field.data_type().clone() {
-                                DataType::Struct(fields) => {
-                                    let field_names = fields
-                                        .iter()
-                                        .map(|f| f.name())
-                                        .collect::<Vec<_>>()
-                                        .join(", ");
-                                    println!("Adding {} to state.struct_stack", field_names);
-                                    let cloned_fields =
-                                        fields.iter().map(|f| f.clone()).collect::<Vec<_>>();
-                                    self.state.struct_stack.push(cloned_fields);
-                                    continue;
-                                }
-                                _ => unreachable!("expected struct field"),
-                            },
+                            Value::Struct(_) => {
+                                self.state.push_struct(&field);
+                                continue;
+                            }
                         }
                     } else if matches!(field.data_type(), DataType::List(_)) {
                         println!("expecting list item {}", value);
