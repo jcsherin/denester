@@ -25,6 +25,18 @@ pub enum ParseError<'a> {
     MissingLevelContext {
         path: PathVector,
     },
+    MissingListContext {
+        path: PathVector,
+    },
+    ListItemNonNullable {
+        path: Vec<String>,
+        item_field: Box<DataType>,
+    },
+    ListItemDataTypeMismatch {
+        item: Value,
+        path: Vec<String>,
+        item_field: Box<DataType>,
+    },
 }
 
 impl<'a> Display for ParseError<'a> {
@@ -54,11 +66,32 @@ impl<'a> Display for ParseError<'a> {
                         .join(",")
                 )
             }
-            ParseError::MissingLevelContext { path } => {
+            ParseError::MissingLevelContext { path } | ParseError::MissingListContext { path } => {
                 write!(
                     f,
                     "Level context missing for computing levels. Path: {}",
                     path.format()
+                )
+            }
+            ParseError::ListItemNonNullable { path, item_field } => {
+                write!(
+                    f,
+                    "This list does not allow null values. item field: {}, path: {}",
+                    item_field,
+                    path.format()
+                )
+            }
+            ParseError::ListItemDataTypeMismatch {
+                item: value,
+                path,
+                item_field,
+            } => {
+                write!(
+                    f,
+                    "List item type mismatch for value: {}, path: {}, item_field: {}",
+                    value,
+                    path.format(),
+                    item_field
                 )
             }
         }
@@ -474,81 +507,83 @@ impl<'a> Iterator for ValueParser<'a> {
                         }
                     } else if matches!(field.data_type(), DataType::List(_)) {
                         println!("expecting list item {}", value);
-                        // We are in a list context and this is a list item.
-                        //
-                        // Shallow type checking is lazy and does not type check the contents of
-                        // a list. This is necessary as lists may contain structs, and have
-                        // arbitrary levels of nesting.
-                        //
-                        // Here we know the list item type, and also track state about the progress
-                        // we have made in the list. We know the index position of this list item
-                        // in the list container.
-                        if let Some(list_context) = self.state.list_stack.last_mut() {
-                            // Definition, repetition levels
-                            let (repetition_level, definition_level) =
-                                match self.state.computed_levels.last() {
-                                    None => todo!("missing level context for list item"),
-                                    Some(level) => {
-                                        if list_context.position() > 0 {
-                                            (level.repetition_depth, level.definition_level)
-                                        } else {
-                                            (level.repetition_level, level.definition_level)
-                                        }
-                                    }
-                                };
 
-                            list_context.increment();
-
-                            if field_name == list_context.field_name() {
-                                match field.data_type() {
-                                    DataType::List(item_type) => {
-                                        match (value, item_type.as_ref()) {
-                                            (Value::Boolean(v), DataType::Boolean) => {
-                                                if !field.is_optional() && v.is_none() {
-                                                    todo!("list item is not nullable")
-                                                }
-                                                return Some(Ok(StripedColumnValue::new(
-                                                    Value::Boolean(*v),
-                                                    repetition_level,
-                                                    definition_level,
-                                                )));
-                                            }
-                                            (Value::Integer(v), DataType::Integer) => {
-                                                if !field.is_optional() && v.is_none() {
-                                                    todo!("list item is not nullable")
-                                                }
-                                                return Some(Ok(StripedColumnValue::new(
-                                                    Value::Integer(*v),
-                                                    repetition_level,
-                                                    definition_level,
-                                                )));
-                                            }
-                                            (Value::String(v), DataType::String) => {
-                                                if !field.is_optional() && v.is_none() {
-                                                    todo!("list item is not nullable")
-                                                }
-                                                return Some(Ok(StripedColumnValue::new(
-                                                    Value::String(v.clone()),
-                                                    repetition_level,
-                                                    definition_level,
-                                                )));
-                                            }
-                                            (
-                                                Value::Struct(named_values),
-                                                DataType::Struct(fields),
-                                            ) => {
-                                                todo!("handle nested struct")
-                                            }
-                                            _ => todo!("value type does not match data type"),
-                                        }
-                                    }
-                                    _ => unreachable!("expected a list item"),
-                                }
-                            } else {
-                                todo!("list context mismatch")
+                        let list_context = match self.state.list_stack.last_mut() {
+                            None => {
+                                return Some(Err(ParseError::MissingListContext {
+                                    path: path.clone(),
+                                }))
                             }
+                            Some(ctx) => ctx,
+                        };
+
+                        let level_context = match self.state.computed_levels.last() {
+                            None => {
+                                return Some(Err(ParseError::MissingLevelContext {
+                                    path: path.clone(),
+                                }))
+                            }
+                            Some(ctx) => ctx,
+                        };
+
+                        let (repetition_level, definition_level) = if list_context.position() > 0 {
+                            (
+                                level_context.repetition_depth,
+                                level_context.definition_level,
+                            )
                         } else {
-                            todo!("missing list context")
+                            (
+                                level_context.repetition_level,
+                                level_context.definition_level,
+                            )
+                        };
+                        list_context.increment();
+
+                        // List context mismatch with current list
+                        if field_name != list_context.field_name() {
+                            return Some(Err(ParseError::MissingListContext {
+                                path: path.clone(),
+                            }));
+                        }
+
+                        match field.data_type() {
+                            DataType::List(item_type) => match (value, item_type.as_ref()) {
+                                (Value::Boolean(v), DataType::Boolean) => {
+                                    if !field.is_optional() && v.is_none() {
+                                        todo!("list item is not nullable")
+                                    }
+                                    return Some(Ok(StripedColumnValue::new(
+                                        Value::Boolean(*v),
+                                        repetition_level,
+                                        definition_level,
+                                    )));
+                                }
+                                (Value::Integer(v), DataType::Integer) => {
+                                    if !field.is_optional() && v.is_none() {
+                                        todo!("list item is not nullable")
+                                    }
+                                    return Some(Ok(StripedColumnValue::new(
+                                        Value::Integer(*v),
+                                        repetition_level,
+                                        definition_level,
+                                    )));
+                                }
+                                (Value::String(v), DataType::String) => {
+                                    if !field.is_optional() && v.is_none() {
+                                        todo!("list item is not nullable")
+                                    }
+                                    return Some(Ok(StripedColumnValue::new(
+                                        Value::String(v.clone()),
+                                        repetition_level,
+                                        definition_level,
+                                    )));
+                                }
+                                (Value::Struct(named_values), DataType::Struct(fields)) => {
+                                    todo!("handle nested struct")
+                                }
+                                _ => todo!("value type does not match data type"),
+                            },
+                            _ => unreachable!("expected a list item"),
                         }
                     } else {
                         todo!("failed shallow type checking")
