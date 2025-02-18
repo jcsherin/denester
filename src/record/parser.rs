@@ -376,15 +376,17 @@ impl<'a> ValueParser<'a> {
         path: &PathVector,
         value: &Value,
     ) -> Result<StripedColumnValue, ParseError<'a>> {
-        if let Some(level_context) = self.state.computed_levels.last() {
-            Ok(StripedColumnValue::new(
-                value.clone(),
-                level_context.repetition_level,
-                level_context.definition_level,
-            ))
-        } else {
-            Err(ParseError::MissingLevelContext { path: path.clone() })
-        }
+        let level_context = self
+            .state
+            .computed_levels
+            .last()
+            .ok_or(ParseError::MissingLevelContext { path: path.clone() })?;
+
+        Ok(StripedColumnValue::new(
+            value.clone(),
+            level_context.repetition_level,
+            level_context.definition_level,
+        ))
     }
 }
 
