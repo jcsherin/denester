@@ -371,7 +371,7 @@ impl<'a> ValueParser<'a> {
         }
     }
 
-    fn get_column_value(
+    fn get_column_from_scalar(
         &self,
         path: &PathVector,
         value: &Value,
@@ -529,7 +529,7 @@ impl<'a> Iterator for ValueParser<'a> {
 
                     match value {
                         Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
-                            return Some(self.get_column_value(&path, &value));
+                            return Some(self.get_column_from_scalar(&path, &value));
                         }
                         Value::List(items) if items.is_empty() => {
                             todo!("get leaf field datatype from path metadata and return column value")
