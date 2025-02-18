@@ -516,23 +516,6 @@ impl<'a> Iterator for ValueParser<'a> {
                 }
             };
 
-            let field = match path.last() {
-                None => {
-                    return Some(Err(ParseError::PathIsEmpty {
-                        value: value.clone(),
-                    }))
-                }
-                Some(field_name) => match self.state.find_struct_field_by(field_name) {
-                    None => {
-                        return Some(Err(ParseError::UnknownField {
-                            field_name: field_name.clone(),
-                            value: value.clone(),
-                        }))
-                    }
-                    Some(field) => field.clone(),
-                },
-            };
-
             if value.type_check_shallow(&field).is_ok() {
                 self.update_level_context(&field, &path, &tmp_prev_path, &longest_common_prefix);
 
