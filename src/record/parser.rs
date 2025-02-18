@@ -1,5 +1,5 @@
 use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
-use crate::record::value::DepthFirstValueIterator;
+use crate::record::value::{DepthFirstValueIterator, TypeCheckError};
 use crate::record::{DataType, Field, PathVector, PathVectorExt, Schema, Value};
 use std::error::Error;
 use std::fmt::{write, Display, Formatter};
@@ -516,101 +516,116 @@ impl<'a> Iterator for ValueParser<'a> {
                 }
             };
 
-            if value.type_check_shallow(&field).is_ok() {
-                self.update_level_context(&field, &path, &tmp_prev_path, &longest_common_prefix);
+            match value.type_check_shallow(&field) {
+                Ok(_) => {
+                    self.update_level_context(
+                        &field,
+                        &path,
+                        &tmp_prev_path,
+                        &longest_common_prefix,
+                    );
 
-                match value {
-                    Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
-                        return Some(self.get_column_value(&path, &value));
-                    }
-                    Value::List(items) if items.is_empty() => {
-                        todo!("get leaf field datatype from path metadata and return column value")
-                    }
-                    Value::List(items) => {
-                        self.state.push_list(&field, items.len());
-                        continue;
-                    }
-                    Value::Struct(_) => {
-                        self.state.push_struct(&field);
-                        continue;
+                    match value {
+                        Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
+                            return Some(self.get_column_value(&path, &value));
+                        }
+                        Value::List(items) if items.is_empty() => {
+                            todo!("get leaf field datatype from path metadata and return column value")
+                        }
+                        Value::List(items) => {
+                            self.state.push_list(&field, items.len());
+                            continue;
+                        }
+                        Value::Struct(_) => {
+                            self.state.push_struct(&field);
+                            continue;
+                        }
                     }
                 }
-            } else if matches!(field.data_type(), DataType::List(_)) {
-                println!("expecting list item {}", value);
+                Err(_) => match field.data_type() {
+                    DataType::List(_) => {
+                        println!("expecting list item {}", value);
 
-                let list_context = match self.state.list_stack.last_mut() {
-                    None => {
-                        return Some(Err(ParseError::MissingListContext { path: path.clone() }))
+                        let list_context = match self.state.list_stack.last_mut() {
+                            None => {
+                                return Some(Err(ParseError::MissingListContext {
+                                    path: path.clone(),
+                                }))
+                            }
+                            Some(ctx) => ctx,
+                        };
+
+                        let level_context = match self.state.computed_levels.last() {
+                            None => {
+                                return Some(Err(ParseError::MissingLevelContext {
+                                    path: path.clone(),
+                                }))
+                            }
+                            Some(ctx) => ctx,
+                        };
+
+                        let (repetition_level, definition_level) = if list_context.position() > 0 {
+                            (
+                                level_context.repetition_depth,
+                                level_context.definition_level,
+                            )
+                        } else {
+                            (
+                                level_context.repetition_level,
+                                level_context.definition_level,
+                            )
+                        };
+                        list_context.increment();
+
+                        // List context mismatch with current list
+                        if field.name() != list_context.field_name() {
+                            return Some(Err(ParseError::MissingListContext {
+                                path: path.clone(),
+                            }));
+                        }
+
+                        match field.data_type() {
+                            DataType::List(item_type) => match (value, item_type.as_ref()) {
+                                (Value::Boolean(v), DataType::Boolean) => {
+                                    if !field.is_optional() && v.is_none() {
+                                        todo!("list item is not nullable")
+                                    }
+                                    return Some(Ok(StripedColumnValue::new(
+                                        Value::Boolean(*v),
+                                        repetition_level,
+                                        definition_level,
+                                    )));
+                                }
+                                (Value::Integer(v), DataType::Integer) => {
+                                    if !field.is_optional() && v.is_none() {
+                                        todo!("list item is not nullable")
+                                    }
+                                    return Some(Ok(StripedColumnValue::new(
+                                        Value::Integer(*v),
+                                        repetition_level,
+                                        definition_level,
+                                    )));
+                                }
+                                (Value::String(v), DataType::String) => {
+                                    if !field.is_optional() && v.is_none() {
+                                        todo!("list item is not nullable")
+                                    }
+                                    return Some(Ok(StripedColumnValue::new(
+                                        Value::String(v.clone()),
+                                        repetition_level,
+                                        definition_level,
+                                    )));
+                                }
+                                (Value::Struct(named_values), DataType::Struct(fields)) => {
+                                    todo!("handle nested struct")
+                                }
+                                _ => todo!("value type does not match data type"),
+                            },
+                            _ => unreachable!("expected a list item"),
+                        }
                     }
-                    Some(ctx) => ctx,
-                };
-
-                let level_context = match self.state.computed_levels.last() {
-                    None => {
-                        return Some(Err(ParseError::MissingLevelContext { path: path.clone() }))
-                    }
-                    Some(ctx) => ctx,
-                };
-
-                let (repetition_level, definition_level) = if list_context.position() > 0 {
-                    (
-                        level_context.repetition_depth,
-                        level_context.definition_level,
-                    )
-                } else {
-                    (
-                        level_context.repetition_level,
-                        level_context.definition_level,
-                    )
-                };
-                list_context.increment();
-
-                // List context mismatch with current list
-                if field.name() != list_context.field_name() {
-                    return Some(Err(ParseError::MissingListContext { path: path.clone() }));
-                }
-
-                match field.data_type() {
-                    DataType::List(item_type) => match (value, item_type.as_ref()) {
-                        (Value::Boolean(v), DataType::Boolean) => {
-                            if !field.is_optional() && v.is_none() {
-                                todo!("list item is not nullable")
-                            }
-                            return Some(Ok(StripedColumnValue::new(
-                                Value::Boolean(*v),
-                                repetition_level,
-                                definition_level,
-                            )));
-                        }
-                        (Value::Integer(v), DataType::Integer) => {
-                            if !field.is_optional() && v.is_none() {
-                                todo!("list item is not nullable")
-                            }
-                            return Some(Ok(StripedColumnValue::new(
-                                Value::Integer(*v),
-                                repetition_level,
-                                definition_level,
-                            )));
-                        }
-                        (Value::String(v), DataType::String) => {
-                            if !field.is_optional() && v.is_none() {
-                                todo!("list item is not nullable")
-                            }
-                            return Some(Ok(StripedColumnValue::new(
-                                Value::String(v.clone()),
-                                repetition_level,
-                                definition_level,
-                            )));
-                        }
-                        (Value::Struct(named_values), DataType::Struct(fields)) => {
-                            todo!("handle nested struct")
-                        }
-                        _ => todo!("value type does not match data type"),
-                    },
-                    _ => unreachable!("expected a list item"),
-                }
-            } else {
-                todo!("failed shallow type checking")
+                    _ => todo!("failed shallow type checking"),
+                },
             }
         }
 
