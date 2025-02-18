@@ -19,8 +19,8 @@ pub enum ParseError<'a> {
         value: &'a Value,
     },
     TypeCheckFailed {
-        value: &'a Value,
-        fields: &'a Vec<Field>,
+        prop_names: Vec<String>,
+        fields: Vec<Field>,
     },
     MissingLevelContext {
         path: PathVector,
@@ -54,11 +54,11 @@ impl<'a> Display for ParseError<'a> {
             ParseError::FieldsNotFound { value } => {
                 write!(f, "Field definitions not found for value: {}", value)
             }
-            ParseError::TypeCheckFailed { value, fields } => {
+            ParseError::TypeCheckFailed { prop_names, fields } => {
                 write!(
                     f,
-                    "Type checking failed for value: {} with fields: {}",
-                    value,
+                    "Type checking failed for props: {} with fields: {}",
+                    prop_names.join(", "),
                     fields
                         .iter()
                         .map(|f| f.name())
@@ -280,6 +280,15 @@ impl ValueParserState {
             DataType::Struct(fields) => self.struct_stack.push(fields.to_vec()),
         }
     }
+
+    pub fn peek_struct(&self) -> Option<&Vec<Field>> {
+        self.struct_stack.last()
+    }
+
+    fn find_struct_field_by(&self, name: &str) -> Option<&Field> {
+        self.peek_struct()
+            .and_then(|fields| fields.iter().find(|f| f.name() == name))
+    }
 }
 
 impl<'a> ValueParser<'a> {
@@ -292,42 +301,6 @@ impl<'a> ValueParser<'a> {
             paths,
             value_iter,
             state,
-        }
-    }
-
-    fn current_fields(&self) -> Option<&Vec<Field>> {
-        self.state.struct_stack.last()
-    }
-
-    fn find_field_by(&self, name: &str) -> Option<&Field> {
-        self.current_fields()
-            .and_then(|fields| fields.iter().find(|f| f.name() == name))
-    }
-
-    /// Parses a top-level struct
-    ///
-    /// At the top-level since the path is empty, it is not possible to search for the field by
-    /// name. So we extract the struct properties, and all the field definitions in the context
-    /// stack, and perform a shallow structural type-checking.
-    ///
-    /// # Errors
-    /// The following errors are handled,
-    ///     * The `value` is not a `Value::Struct(_)`
-    ///     * The context stack is empty, and there are no fields to do type-checking
-    ///     * The shallow structural type-checking failed
-    fn parse_top_level_struct<'b>(&'b self, value: &'b Value) -> Result<(), ParseError<'b>> {
-        let props = match value {
-            Value::Struct(props) => props,
-            _ => return Err(ParseError::UnexpectedTopLevelValue { value }),
-        };
-
-        let fields = self
-            .current_fields()
-            .ok_or(ParseError::FieldsNotFound { value })?;
-
-        match Value::type_check_struct_shallow(props, &fields) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(ParseError::TypeCheckFailed { value, fields }),
         }
     }
 
@@ -401,6 +374,30 @@ impl<'a> ValueParser<'a> {
     }
 }
 
+/// Parses a top-level struct
+///
+/// At the top-level since the path is empty, it is not possible to search for the field by
+/// name. So we extract the struct properties, and all the field definitions in the context
+/// stack, and perform a shallow structural type-checking.
+///
+/// # Errors
+/// The following errors are handled,
+///     * The `value` is not a `Value::Struct(_)`
+///     * The context stack is empty, and there are no fields to do type-checking
+///     * The shallow structural type-checking failed
+fn parse_top_level_struct<'a>(
+    props: Vec<(String, Value)>,
+    fields: Vec<Field>,
+) -> Result<(), ParseError<'a>> {
+    // TODO: map type-checking errors to parse errors
+    match Value::type_check_struct_shallow(&props, &fields) {
+        Ok(_) => Ok(()),
+        Err(_) => Err(ParseError::TypeCheckFailed {
+            prop_names: props.iter().map(|(name, _)| name.clone()).collect(),
+            fields: fields.iter().cloned().collect(),
+        }),
+    }
+}
 #[derive(Debug)]
 pub struct StripedColumnValue {
     value: Value,
@@ -444,11 +441,17 @@ impl<'a> Iterator for ValueParser<'a> {
             );
 
             if path.is_top_level() {
-                match self.parse_top_level_struct(value) {
+                let props = match value {
+                    Value::Struct(props) => props.to_vec(),
+                    _ => return Some(Err(ParseError::UnexpectedTopLevelValue { value })),
+                };
+                let fields = match self.state.peek_struct() {
+                    None => return Some(Err(ParseError::FieldsNotFound { value })),
+                    Some(fields) => fields.to_vec(),
+                };
+                match parse_top_level_struct(props, fields) {
                     Ok(_) => continue,
-                    Err(_) => {
-                        todo!("handle error while parsing top level struct")
-                    }
+                    Err(err) => return Some(Err(err)),
                 }
             }
 
@@ -481,7 +484,11 @@ impl<'a> Iterator for ValueParser<'a> {
             self.state.prev_path = path.clone();
 
             if let Some(field_name) = path.last() {
-                if let Some(field) = self.find_field_by(field_name).map(|field| field.clone()) {
+                if let Some(field) = self
+                    .state
+                    .find_struct_field_by(field_name)
+                    .map(|field| field.clone())
+                {
                     if value.type_check_shallow(&field).is_ok() {
                         self.update_level_context(
                             &field,
