@@ -37,6 +37,13 @@ pub enum ParseError<'a> {
         path: Vec<String>,
         item_field: Box<DataType>,
     },
+    PathIsEmpty {
+        value: Value,
+    },
+    UnknownField {
+        field_name: String,
+        value: Value,
+    },
 }
 
 impl<'a> Display for ParseError<'a> {
@@ -93,6 +100,13 @@ impl<'a> Display for ParseError<'a> {
                     path.format(),
                     item_field
                 )
+            }
+            ParseError::PathIsEmpty { value } => {
+                write!(f, "Path is empty: {}", value)
+            }
+
+            ParseError::UnknownField { field_name, value } => {
+                write!(f, "Unknown field name \"{}\": {}", field_name, value)
             }
         }
     }
@@ -483,121 +497,137 @@ impl<'a> Iterator for ValueParser<'a> {
             let tmp_prev_path = self.state.prev_path.clone();
             self.state.prev_path = path.clone();
 
-            if let Some(field_name) = path.last() {
-                if let Some(field) = self
-                    .state
-                    .find_struct_field_by(field_name)
-                    .map(|field| field.clone())
-                {
-                    if value.type_check_shallow(&field).is_ok() {
-                        self.update_level_context(
-                            &field,
-                            &path,
-                            &tmp_prev_path,
-                            &longest_common_prefix,
-                        );
-
-                        match value {
-                            Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
-                                return Some(self.get_column_value(&path, &value));
-                            }
-                            Value::List(items) if items.is_empty() =>
-                                todo!("get leaf field datatype from path metadata and return column value"),
-                            Value::List(items) => {
-                                self.state.push_list(&field, items.len());
-                                continue;
-                            }
-                            Value::Struct(_) => {
-                                self.state.push_struct(&field);
-                                continue;
-                            }
-                        }
-                    } else if matches!(field.data_type(), DataType::List(_)) {
-                        println!("expecting list item {}", value);
-
-                        let list_context = match self.state.list_stack.last_mut() {
-                            None => {
-                                return Some(Err(ParseError::MissingListContext {
-                                    path: path.clone(),
-                                }))
-                            }
-                            Some(ctx) => ctx,
-                        };
-
-                        let level_context = match self.state.computed_levels.last() {
-                            None => {
-                                return Some(Err(ParseError::MissingLevelContext {
-                                    path: path.clone(),
-                                }))
-                            }
-                            Some(ctx) => ctx,
-                        };
-
-                        let (repetition_level, definition_level) = if list_context.position() > 0 {
-                            (
-                                level_context.repetition_depth,
-                                level_context.definition_level,
-                            )
-                        } else {
-                            (
-                                level_context.repetition_level,
-                                level_context.definition_level,
-                            )
-                        };
-                        list_context.increment();
-
-                        // List context mismatch with current list
-                        if field_name != list_context.field_name() {
-                            return Some(Err(ParseError::MissingListContext {
-                                path: path.clone(),
-                            }));
-                        }
-
-                        match field.data_type() {
-                            DataType::List(item_type) => match (value, item_type.as_ref()) {
-                                (Value::Boolean(v), DataType::Boolean) => {
-                                    if !field.is_optional() && v.is_none() {
-                                        todo!("list item is not nullable")
-                                    }
-                                    return Some(Ok(StripedColumnValue::new(
-                                        Value::Boolean(*v),
-                                        repetition_level,
-                                        definition_level,
-                                    )));
-                                }
-                                (Value::Integer(v), DataType::Integer) => {
-                                    if !field.is_optional() && v.is_none() {
-                                        todo!("list item is not nullable")
-                                    }
-                                    return Some(Ok(StripedColumnValue::new(
-                                        Value::Integer(*v),
-                                        repetition_level,
-                                        definition_level,
-                                    )));
-                                }
-                                (Value::String(v), DataType::String) => {
-                                    if !field.is_optional() && v.is_none() {
-                                        todo!("list item is not nullable")
-                                    }
-                                    return Some(Ok(StripedColumnValue::new(
-                                        Value::String(v.clone()),
-                                        repetition_level,
-                                        definition_level,
-                                    )));
-                                }
-                                (Value::Struct(named_values), DataType::Struct(fields)) => {
-                                    todo!("handle nested struct")
-                                }
-                                _ => todo!("value type does not match data type"),
-                            },
-                            _ => unreachable!("expected a list item"),
-                        }
-                    } else {
-                        todo!("failed shallow type checking")
-                    }
-                } else {
-                    todo!("field not found in struct context")
+            let field = match path
+                .last()
+                .ok_or(ParseError::PathIsEmpty {
+                    value: value.clone(),
+                })
+                .and_then(|field_name| {
+                    self.state
+                        .find_struct_field_by(field_name)
+                        .ok_or(ParseError::UnknownField {
+                            field_name: field_name.clone(),
+                            value: value.clone(),
+                        })
+                }) {
+                Ok(f) => f.clone(),
+                Err(err) => {
+                    return Some(Err(err));
                 }
+            };
+
+            let field = match path.last() {
+                None => {
+                    return Some(Err(ParseError::PathIsEmpty {
+                        value: value.clone(),
+                    }))
+                }
+                Some(field_name) => match self.state.find_struct_field_by(field_name) {
+                    None => {
+                        return Some(Err(ParseError::UnknownField {
+                            field_name: field_name.clone(),
+                            value: value.clone(),
+                        }))
+                    }
+                    Some(field) => field.clone(),
+                },
+            };
+
+            if value.type_check_shallow(&field).is_ok() {
+                self.update_level_context(&field, &path, &tmp_prev_path, &longest_common_prefix);
+
+                match value {
+                    Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
+                        return Some(self.get_column_value(&path, &value));
+                    }
+                    Value::List(items) if items.is_empty() => {
+                        todo!("get leaf field datatype from path metadata and return column value")
+                    }
+                    Value::List(items) => {
+                        self.state.push_list(&field, items.len());
+                        continue;
+                    }
+                    Value::Struct(_) => {
+                        self.state.push_struct(&field);
+                        continue;
+                    }
+                }
+            } else if matches!(field.data_type(), DataType::List(_)) {
+                println!("expecting list item {}", value);
+
+                let list_context = match self.state.list_stack.last_mut() {
+                    None => {
+                        return Some(Err(ParseError::MissingListContext { path: path.clone() }))
+                    }
+                    Some(ctx) => ctx,
+                };
+
+                let level_context = match self.state.computed_levels.last() {
+                    None => {
+                        return Some(Err(ParseError::MissingLevelContext { path: path.clone() }))
+                    }
+                    Some(ctx) => ctx,
+                };
+
+                let (repetition_level, definition_level) = if list_context.position() > 0 {
+                    (
+                        level_context.repetition_depth,
+                        level_context.definition_level,
+                    )
+                } else {
+                    (
+                        level_context.repetition_level,
+                        level_context.definition_level,
+                    )
+                };
+                list_context.increment();
+
+                // List context mismatch with current list
+                if field.name() != list_context.field_name() {
+                    return Some(Err(ParseError::MissingListContext { path: path.clone() }));
+                }
+
+                match field.data_type() {
+                    DataType::List(item_type) => match (value, item_type.as_ref()) {
+                        (Value::Boolean(v), DataType::Boolean) => {
+                            if !field.is_optional() && v.is_none() {
+                                todo!("list item is not nullable")
+                            }
+                            return Some(Ok(StripedColumnValue::new(
+                                Value::Boolean(*v),
+                                repetition_level,
+                                definition_level,
+                            )));
+                        }
+                        (Value::Integer(v), DataType::Integer) => {
+                            if !field.is_optional() && v.is_none() {
+                                todo!("list item is not nullable")
+                            }
+                            return Some(Ok(StripedColumnValue::new(
+                                Value::Integer(*v),
+                                repetition_level,
+                                definition_level,
+                            )));
+                        }
+                        (Value::String(v), DataType::String) => {
+                            if !field.is_optional() && v.is_none() {
+                                todo!("list item is not nullable")
+                            }
+                            return Some(Ok(StripedColumnValue::new(
+                                Value::String(v.clone()),
+                                repetition_level,
+                                definition_level,
+                            )));
+                        }
+                        (Value::Struct(named_values), DataType::Struct(fields)) => {
+                            todo!("handle nested struct")
+                        }
+                        _ => todo!("value type does not match data type"),
+                    },
+                    _ => unreachable!("expected a list item"),
+                }
+            } else {
+                todo!("failed shallow type checking")
             }
         }
 
