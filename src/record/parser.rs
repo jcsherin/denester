@@ -30,7 +30,7 @@ pub enum ParseError<'a> {
     },
     ListItemNonNullable {
         path: Vec<String>,
-        item_field: Box<DataType>,
+        field: DataType,
     },
     ListItemDataTypeMismatch {
         item: Value,
@@ -80,11 +80,11 @@ impl<'a> Display for ParseError<'a> {
                     path.format()
                 )
             }
-            ParseError::ListItemNonNullable { path, item_field } => {
+            ParseError::ListItemNonNullable { path, field } => {
                 write!(
                     f,
-                    "This list does not allow null values. item field: {}, path: {}",
-                    item_field,
+                    "This list does not allow null values. field: {}, path: {}",
+                    field,
                     path.format()
                 )
             }
@@ -388,6 +388,28 @@ impl<'a> ValueParser<'a> {
             level_context.definition_level,
         ))
     }
+
+    fn get_column_from_scalar_list(
+        &self,
+        path: &PathVector,
+        field: &Field,
+        value: &Value,
+        repetition_level: RepetitionLevel,
+        definition_level: DefinitionLevel,
+    ) -> Result<StripedColumnValue, ParseError<'a>> {
+        if !field.is_optional() && value.is_null() {
+            return Err(ParseError::ListItemNonNullable {
+                path: path.clone(),
+                field: field.data_type().clone(),
+            });
+        }
+
+        Ok(StripedColumnValue::new(
+            value.clone(),
+            repetition_level,
+            definition_level,
+        ))
+    }
 }
 
 /// Parses a top-level struct
@@ -588,35 +610,16 @@ impl<'a> Iterator for ValueParser<'a> {
 
                         match field.data_type() {
                             DataType::List(item_type) => match (value, item_type.as_ref()) {
-                                (Value::Boolean(v), DataType::Boolean) => {
-                                    if !field.is_optional() && v.is_none() {
-                                        todo!("list item is not nullable")
-                                    }
-                                    return Some(Ok(StripedColumnValue::new(
-                                        Value::Boolean(*v),
+                                (Value::Boolean(_), DataType::Boolean)
+                                | (Value::Integer(_), DataType::Integer)
+                                | (Value::String(_), DataType::String) => {
+                                    return Some(self.get_column_from_scalar_list(
+                                        &path,
+                                        &field,
+                                        value,
                                         repetition_level,
                                         definition_level,
-                                    )));
-                                }
-                                (Value::Integer(v), DataType::Integer) => {
-                                    if !field.is_optional() && v.is_none() {
-                                        todo!("list item is not nullable")
-                                    }
-                                    return Some(Ok(StripedColumnValue::new(
-                                        Value::Integer(*v),
-                                        repetition_level,
-                                        definition_level,
-                                    )));
-                                }
-                                (Value::String(v), DataType::String) => {
-                                    if !field.is_optional() && v.is_none() {
-                                        todo!("list item is not nullable")
-                                    }
-                                    return Some(Ok(StripedColumnValue::new(
-                                        Value::String(v.clone()),
-                                        repetition_level,
-                                        definition_level,
-                                    )));
+                                    ));
                                 }
                                 (Value::Struct(named_values), DataType::Struct(fields)) => {
                                     todo!("handle nested struct")
