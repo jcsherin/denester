@@ -921,4 +921,52 @@ mod tests {
         assert_eq!(parsed[0].repetition_level, 0);
         assert_eq!(parsed[1].repetition_level, 0);
     }
+
+    #[test]
+    fn test_schema_links() {
+        // message doc {
+        //   optional group Links {
+        //      repeated int Backward;
+        //      repeated int Forward; }}
+        let schema = SchemaBuilder::new("Doc", vec![])
+            .field(optional_group(
+                "Links",
+                vec![repeated_integer("Backward"), repeated_integer("Forward")],
+            ))
+            .build();
+
+        // { links:
+        //      forward: [20, 40, 60] }
+        let value = ValueBuilder::new()
+            .field(
+                "Links",
+                ValueBuilder::new()
+                    .repeated("Forward", vec![20, 40, 60])
+                    .build(),
+            )
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        println!("{:?}", parsed);
+
+        assert_eq!(parsed[0].value, Value::Integer(Some(20)));
+        assert_eq!(parsed[1].value, Value::Integer(Some(40)));
+        assert_eq!(parsed[2].value, Value::Integer(Some(60)));
+
+        assert_eq!(parsed[0].definition_level, 2);
+        assert_eq!(parsed[1].definition_level, 2);
+        assert_eq!(parsed[2].definition_level, 2);
+
+        assert_eq!(parsed[0].repetition_level, 0);
+        assert_eq!(parsed[1].repetition_level, 1);
+        assert_eq!(parsed[2].repetition_level, 1);
+
+        // TODO: handle empty Backward list
+        assert_eq!(parsed.len(), 4);
+    }
 }
