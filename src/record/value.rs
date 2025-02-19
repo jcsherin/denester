@@ -159,14 +159,18 @@ impl Value {
     /// For repeated values `Value::List(_)` the individual items in the list are not type checked.
     /// Similarly, for records `Value::Struct(_)` the field names should match. The values are not
     /// type checked.
-    pub fn type_check_shallow(&self, field: &Field) -> Result<(), TypeCheckError> {
+    pub fn type_check_shallow(
+        &self,
+        field: &Field,
+        path: &PathVector,
+    ) -> Result<(), TypeCheckError> {
         match (self, field.data_type()) {
             (Value::Boolean(_), DataType::Boolean)
             | (Value::Integer(_), DataType::Integer)
             | (Value::String(_), DataType::String) => {
                 if field.is_required() && self.is_null() {
                     Err(TypeCheckError::RequiredFieldIsNull {
-                        value: self.clone(),
+                        path: path.clone(),
                         field: field.clone(),
                     })
                 } else {
@@ -274,7 +278,7 @@ pub enum TypeCheckError {
         field: Field,
     },
     RequiredFieldIsNull {
-        value: Value,
+        path: PathVector,
         field: Field,
     },
     RequiredFieldsAreMissing {
