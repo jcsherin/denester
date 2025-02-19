@@ -650,7 +650,8 @@ impl<'a> Iterator for ValueParser<'a> {
                                     ));
                                 }
                                 (Value::Struct(named_values), DataType::Struct(fields)) => {
-                                    todo!("handle nested struct")
+                                    // TODO: duplication with `self.state.push_struct` which takes &Field param
+                                    self.state.struct_stack.push(fields.to_vec())
                                 }
                                 _ => todo!("value type does not match data type"),
                             },
@@ -1050,7 +1051,6 @@ mod tests {
             .collect::<Vec<_>>();
 
         // TODO: handle missing repeated fields
-        // TODO: handle nested struct within list
         assert_eq!(parsed.len(), 4);
     }
 }
