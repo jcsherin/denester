@@ -969,4 +969,63 @@ mod tests {
         // TODO: handle empty Backward list
         assert_eq!(parsed.len(), 4);
     }
+
+    #[test]
+    fn test_schema_code() {
+        // message doc {
+        //  repeated group Name {
+        //    repeated group Language {
+        //      required string Code; }}}
+        let schema = SchemaBuilder::new(
+            "doc",
+            vec![repeated_group(
+                "Name",
+                vec![repeated_group("Language", vec![string("Code")])],
+            )],
+        )
+        .build();
+
+        // Name
+        //  Language
+        //    Code: 'en-us'
+        //  Language
+        //    Code: 'en'
+        // Name
+        // Name
+        //  Language
+        //    Code: 'en-gb'
+        let value = ValueBuilder::new()
+            .repeated(
+                "Name",
+                vec![
+                    ValueBuilder::new() // 0
+                        .repeated(
+                            "Language",
+                            vec![
+                                ValueBuilder::new().field("Code", "en-us").build(),
+                                ValueBuilder::new().field("Code", "en").build(),
+                            ],
+                        )
+                        .build(),
+                    ValueBuilder::new().build(), // 1
+                    ValueBuilder::new() // 2
+                        .repeated(
+                            "Language",
+                            vec![ValueBuilder::new().field("Code", "en-gb").build()],
+                        )
+                        .build(),
+                ],
+            )
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        // TODO: handle missing repeated fields
+        // TODO: handle nested struct within list
+        assert_eq!(parsed.len(), 4);
+    }
 }
