@@ -556,7 +556,33 @@ impl<'a> Iterator for ValueParser<'a> {
                             return Some(self.get_column_from_scalar(&path, &value));
                         }
                         Value::List(items) if items.is_empty() => {
-                            todo!("get leaf field datatype from path metadata and return column value")
+                            println!("path: {}", path.format());
+                            for path_metadata in &self.paths {
+                                println!("{}", path_metadata);
+                            }
+                            /// There are two possible states here:
+                            ///  - scalar type list item (single column)
+                            ///  - struct list item (one or more columns)
+                            ///
+                            /// TODO: handle struct list item (returning one or more columns)
+                            match field.data_type() {
+                                DataType::List(inner) => match inner.as_ref() {
+                                    DataType::Boolean | DataType::Integer | DataType::String => {
+                                        let null_value = Value::create_null_or_empty(inner.as_ref());
+                                        return Some(self.get_column_from_scalar(
+                                            &path,
+                                            &null_value
+                                        ));
+                                    }
+                                    DataType::List(_) => {
+                                        unreachable!("empty list: nested list types not allowed")
+                                    }
+                                    DataType::Struct(_) => {
+                                        todo!("handle null buffering for struct fields")
+                                    }
+                                },
+                                _ => unreachable!("expected list value to a have list datatype"),
+                            }
                         }
                         Value::List(items) => {
                             self.state.push_list(&field, items.len());
@@ -650,6 +676,7 @@ mod tests {
     };
     use crate::record::value::ValueBuilder;
     use crate::record::SchemaBuilder;
+    use std::fmt::format;
 
     #[test]
     fn test_optional_field_contains_null() {
@@ -740,21 +767,19 @@ mod tests {
     }
 
     #[test]
-    fn test_repeated_field_is_empty() {
+    fn test_repeated_scalar_field_is_empty() {
         let schema = SchemaBuilder::new("repeated_field", vec![repeated_integer("xs")]).build();
         let value = ValueBuilder::new()
             .repeated("xs", Vec::<Value>::new())
             .build();
         let mut parser = ValueParser::new(&schema, value.iter_depth_first());
 
-        let item = parser.next().unwrap();
-        assert_eq!(
-            parser
-                .next()
-                .and_then(Result::ok)
-                .map(|column| column.value),
-            Some(Value::Integer(None))
-        );
+        let item = parser.next().and_then(Result::ok).unwrap();
+
+        assert_eq!(item.value, Value::Integer(None));
+        assert_eq!(item.repetition_level, 0);
+        assert_eq!(item.definition_level, 1); // because the list is empty, not missing
+
         assert!(parser.next().is_none());
     }
 

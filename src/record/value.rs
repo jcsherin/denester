@@ -148,6 +148,21 @@ pub struct DepthFirstValueIterator<'a> {
 }
 
 impl Value {
+    /// Returns NULL or missing values for a given data type
+    ///
+    /// For scalar values always return NULL
+    /// For list return an empty list
+    /// For struct return with zero properties
+    pub fn create_null_or_empty(data_type: &DataType) -> Self {
+        match data_type {
+            DataType::Boolean => Value::Boolean(None),
+            DataType::Integer => Value::Integer(None),
+            DataType::String => Value::String(None),
+            DataType::List(_) => Value::List(vec![]),
+            DataType::Struct(_) => Value::Struct(vec![]),
+        }
+    }
+
     pub fn iter_depth_first(&self) -> DepthFirstValueIterator {
         DepthFirstValueIterator {
             stack: vec![(self, PathVector::default())],
