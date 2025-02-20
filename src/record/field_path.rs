@@ -115,7 +115,7 @@ impl<'a> Iterator for FieldPathIterator<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PathMetadata {
     field_path: FieldPath,
     definition_level: u8,
@@ -135,6 +135,10 @@ impl PathMetadata {
 
     pub fn path(&self) -> &[String] {
         &self.field_path.path()
+    }
+
+    pub fn len(&self) -> usize {
+        self.path().len()
     }
 
     pub fn field(&self) -> &Field {

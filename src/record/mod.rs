@@ -14,6 +14,8 @@ trait PathVectorExt {
     fn longest_common_prefix(&self, other: &PathVector) -> PathVector;
     fn format(&self) -> String;
     fn is_top_level(&self) -> bool;
+    fn append_name(&self, name: String) -> PathVector;
+    fn from_slice(slice: &[String]) -> Self;
 }
 
 impl PathVectorExt for PathVector {
@@ -35,6 +37,15 @@ impl PathVectorExt for PathVector {
 
     fn is_top_level(&self) -> bool {
         self.is_empty()
+    }
+
+    /// Creates a new PathVector by appending the input field name
+    fn append_name(&self, name: String) -> PathVector {
+        self.iter().cloned().chain(std::iter::once(name)).collect()
+    }
+
+    fn from_slice(slice: &[String]) -> Self {
+        slice.to_vec()
     }
 }
 

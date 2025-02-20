@@ -2,8 +2,10 @@ use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
 use crate::record::parser::ParseError::RequiredFieldIsNull;
 use crate::record::value::{DepthFirstValueIterator, TypeCheckError};
 use crate::record::{DataType, Field, PathVector, PathVectorExt, Schema, Value};
+use std::collections::{HashSet, VecDeque};
 use std::error::Error;
 use std::fmt::{write, Display, Formatter};
+use std::path::Path;
 
 #[derive(Debug)]
 pub enum ParseError<'a> {
@@ -265,6 +267,7 @@ struct ValueParserState {
     list_stack: Vec<ListContext>,
     prev_path: PathVector,
     computed_levels: Vec<LevelContext>,
+    missing_paths: VecDeque<PathMetadata>,
 }
 
 impl ValueParserState {
@@ -278,7 +281,8 @@ impl ValueParserState {
                 struct_stack: vec![fields],
                 list_stack: vec![],
                 prev_path: PathVector::default(),
-                computed_levels: vec![],
+                computed_levels: vec![LevelContext::default()],
+                missing_paths: VecDeque::new(),
             }
         }
     }
@@ -414,30 +418,6 @@ impl<'a> ValueParser<'a> {
     }
 }
 
-/// Parses a top-level struct
-///
-/// At the top-level since the path is empty, it is not possible to search for the field by
-/// name. So we extract the struct properties, and all the field definitions in the context
-/// stack, and perform a shallow structural type-checking.
-///
-/// # Errors
-/// The following errors are handled,
-///     * The `value` is not a `Value::Struct(_)`
-///     * The context stack is empty, and there are no fields to do type-checking
-///     * The shallow structural type-checking failed
-fn parse_top_level_struct<'a>(
-    props: Vec<(String, Value)>,
-    fields: Vec<Field>,
-) -> Result<(), ParseError<'a>> {
-    // TODO: map type-checking errors to parse errors
-    match Value::type_check_struct_shallow(&props, &fields) {
-        Ok(_) => Ok(()),
-        Err(_) => Err(ParseError::TypeCheckFailed {
-            prop_names: props.iter().map(|(name, _)| name.clone()).collect(),
-            fields: fields.iter().cloned().collect(),
-        }),
-    }
-}
 #[derive(Debug)]
 pub struct StripedColumnValue {
     value: Value,
@@ -457,6 +437,89 @@ impl StripedColumnValue {
             definition_level,
         }
     }
+}
+
+#[derive(Debug, Default)]
+struct MissingFields {
+    optional: Vec<String>,
+    repeated: Vec<String>,
+}
+
+impl MissingFields {
+    /// Returns missing fields of a struct value
+    ///
+    /// Only optional and repeated fields are collected. If a required field is missing then the struct
+    /// value has failed type checking.
+    fn with_struct(props: &Vec<(String, Value)>, fields: &Vec<Field>) -> Self {
+        let mut missing_fields = MissingFields::default();
+        let present_fields = props
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<HashSet<_>>();
+
+        for field in fields {
+            if present_fields.contains(field.name()) {
+                continue;
+            }
+
+            // The list nullability is about whether it may contain null values. It may be either
+            // true or false. We do not want to classify a list as an optional field if it can have
+            // null values.
+            //
+            // So there is an order dependency here. We check if a field is repeated before we
+            // check if a field is marked as optional.
+            if field.is_repeated() {
+                missing_fields.repeated.push(field.name().to_string());
+                continue;
+            }
+
+            if field.is_optional() {
+                missing_fields.optional.push(field.name().to_string());
+            }
+        }
+
+        missing_fields
+    }
+
+    fn optional(&self) -> &[String] {
+        self.optional.as_slice()
+    }
+
+    fn repeated(&self) -> &[String] {
+        self.repeated.as_slice()
+    }
+}
+
+fn find_missing_paths(
+    prefix: &PathVector,
+    missing_fields: &MissingFields,
+    paths: &Vec<PathMetadata>,
+) -> Vec<PathMetadata> {
+    let mut missing_paths = vec![];
+
+    for field_name in missing_fields
+        .optional()
+        .iter()
+        .chain(missing_fields.repeated().iter())
+    {
+        let path = prefix.append_name(field_name.to_string());
+
+        for path_metadata in paths {
+            if path.len() > path_metadata.len() {
+                continue;
+            }
+
+            if path
+                .iter()
+                .zip(path_metadata.path().iter())
+                .all(|(x, y)| x == y)
+            {
+                missing_paths.push(path_metadata.clone());
+            }
+        }
+    }
+
+    missing_paths
 }
 
 type StripedColumnResult<'a> = Result<StripedColumnValue, ParseError<'a>>;
@@ -480,6 +543,9 @@ impl<'a> Iterator for ValueParser<'a> {
                 path.format()
             );
 
+            // At the top-level since the path is empty, it is not possible to search for the field by
+            // name. So we extract the struct properties, and all the field definitions in the context
+            // stack, and perform a shallow structural type-checking.
             if path.is_top_level() {
                 let props = match value {
                     Value::Struct(props) => props.to_vec(),
@@ -489,9 +555,22 @@ impl<'a> Iterator for ValueParser<'a> {
                     None => return Some(Err(ParseError::FieldsNotFound { value })),
                     Some(fields) => fields.to_vec(),
                 };
-                match parse_top_level_struct(props, fields) {
-                    Ok(_) => continue,
-                    Err(err) => return Some(Err(err)),
+                match Value::type_check_struct_shallow(&props, &fields) {
+                    Ok(_) => {
+                        let missing_fields = MissingFields::with_struct(&props, &fields);
+                        let missing_paths = find_missing_paths(&path, &missing_fields, &self.paths);
+                        if !missing_paths.is_empty() {
+                            self.state.missing_paths = VecDeque::from(missing_paths); // removing from front is O(1)
+                            println!("Adding missing paths: {:?}", self.state.missing_paths)
+                        }
+                        continue;
+                    }
+                    Err(_) => {
+                        return Some(Err(ParseError::TypeCheckFailed {
+                            prop_names: props.iter().map(|(name, _)| name.clone()).collect(),
+                            fields: fields.iter().cloned().collect(),
+                        }))
+                    }
                 }
             }
 
@@ -568,11 +647,11 @@ impl<'a> Iterator for ValueParser<'a> {
                             match field.data_type() {
                                 DataType::List(inner) => match inner.as_ref() {
                                     DataType::Boolean | DataType::Integer | DataType::String => {
-                                        let null_value = Value::create_null_or_empty(inner.as_ref());
-                                        return Some(self.get_column_from_scalar(
-                                            &path,
-                                            &null_value
-                                        ));
+                                        let null_value =
+                                            Value::create_null_or_empty(inner.as_ref());
+                                        return Some(
+                                            self.get_column_from_scalar(&path, &null_value),
+                                        );
                                     }
                                     DataType::List(_) => {
                                         unreachable!("empty list: nested list types not allowed")
@@ -663,6 +742,30 @@ impl<'a> Iterator for ValueParser<'a> {
             }
         }
 
+        // Handles missing fields in top-level
+        // Emit null column value if there are missing paths in this level
+        if !self.state.missing_paths.is_empty() {
+            let missing_path = self.state.missing_paths.pop_front().unwrap();
+            let data_type = missing_path.field().data_type();
+            match data_type {
+                DataType::Boolean | DataType::Integer | DataType::String => {
+                    let null_value = Value::create_null_or_empty(data_type);
+                    println!("returning null value for {}", missing_path);
+
+                    return Some(self.get_column_from_scalar(
+                        &PathVector::from_slice(missing_path.path()),
+                        &null_value,
+                    ));
+                }
+                DataType::List(_) => {
+                    todo!("handle missing list")
+                }
+                DataType::Struct(_) => {
+                    todo!("handle missing struct")
+                }
+            }
+        }
+
         // TODO: generate NULL values when top-level optional/repeated paths are missing
         None
     }
@@ -696,7 +799,7 @@ mod tests {
     }
 
     #[test]
-    fn test_optional_field_is_missing() {
+    fn test_top_level_optional_field_is_missing() {
         let schema = SchemaBuilder::new("optional_field", vec![optional_integer("x")]).build();
         let value = ValueBuilder::new().build();
         let parser = ValueParser::new(&schema, value.iter_depth_first());
@@ -707,6 +810,8 @@ mod tests {
 
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].value, Value::Integer(None));
+        assert_eq!(parsed[0].definition_level, 0);
+        assert_eq!(parsed[0].repetition_level, 0);
     }
 
     #[test]
@@ -840,7 +945,7 @@ mod tests {
         assert!(parser.next().is_none());
     }
     #[test]
-    fn test_repeated_field_is_missing() {
+    fn test_top_level_repeated_field_is_missing() {
         let schema = SchemaBuilder::new("repeated_field", vec![repeated_integer("xs")]).build();
         let value = ValueBuilder::new().build();
         let mut parser = ValueParser::new(&schema, value.iter_depth_first());
