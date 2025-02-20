@@ -757,9 +757,22 @@ impl<'a> Iterator for ValueParser<'a> {
                         &null_value,
                     ));
                 }
-                DataType::List(_) => {
-                    todo!("handle missing list")
-                }
+                DataType::List(inner) => match inner.as_ref() {
+                    DataType::Boolean | DataType::Integer | DataType::String => {
+                        let null_value = Value::create_null_or_empty(inner.as_ref());
+
+                        return Some(self.get_column_from_scalar(
+                            &PathVector::from_slice(missing_path.path()),
+                            &null_value,
+                        ));
+                    }
+                    DataType::List(_) => {
+                        unreachable!("not allowed")
+                    }
+                    DataType::Struct(_) => {
+                        unreachable!("leaf field cannot have a struct as list item")
+                    }
+                },
                 DataType::Struct(_) => {
                     todo!("handle missing struct")
                 }
@@ -952,6 +965,8 @@ mod tests {
 
         let item = parser.next().unwrap();
         assert_eq!(item.as_ref().unwrap().value, Value::Integer(None));
+        assert_eq!(item.as_ref().unwrap().definition_level, 0);
+        assert_eq!(item.as_ref().unwrap().repetition_level, 0);
 
         assert!(parser.next().is_none());
     }
