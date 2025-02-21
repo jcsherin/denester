@@ -1173,4 +1173,212 @@ mod tests {
         // TODO: handle missing repeated fields
         assert_eq!(parsed.len(), 4);
     }
+
+    #[test]
+    fn test_top_level_missing_fields() {
+        // message doc {
+        //   required int a,
+        //   optional int b,
+        //   optional int c, }
+        let schema = SchemaBuilder::new("doc", vec![])
+            .field(integer("a"))
+            .field(optional_integer("b"))
+            .field(optional_integer("c"))
+            .build();
+
+        // { a: 1, c: 3 }
+        let value = ValueBuilder::new().field("a", 1).field("c", 3).build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 3);
+
+        // Present fields are emitted first
+        assert_eq!(parsed[0].value, Value::Integer(Some(1)));
+        assert_eq!(parsed[1].value, Value::Integer(Some(3)));
+        // Missing fields are emitted last
+        assert_eq!(parsed[2].value, Value::Integer(None));
+
+        assert_eq!(parsed[0].definition_level, 0);
+        assert_eq!(parsed[1].definition_level, 1);
+        assert_eq!(parsed[2].definition_level, 0); // because b is missing
+
+        assert_eq!(parsed[0].repetition_level, 0);
+        assert_eq!(parsed[1].repetition_level, 0);
+        assert_eq!(parsed[2].repetition_level, 0);
+    }
+
+    #[test]
+    fn test_nested_missing_fields() {
+        // message doc {
+        //  required group a {
+        //      required int x
+        //      optional int y },
+        //  required int b }
+        let schema = SchemaBuilder::new("doc", vec![])
+            .field(required_group(
+                "a",
+                vec![integer("x"), optional_integer("y")],
+            ))
+            .field(integer("b"))
+            .build();
+
+        // { a: { x: 1 }, b: 2 }
+        let value = ValueBuilder::new()
+            .field("a", ValueBuilder::new().field("x", 1).build())
+            .field("b", 2)
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 3);
+
+        assert_eq!(parsed[0].value, Value::Integer(Some(1))); // a.x
+        assert_eq!(parsed[1].value, Value::Integer(None)); // a.y
+        assert_eq!(parsed[2].value, Value::Integer(Some(2))); // b
+
+        assert_eq!(parsed[0].definition_level, 0);
+        assert_eq!(parsed[1].definition_level, 0);
+        assert_eq!(parsed[2].definition_level, 0);
+
+        assert_eq!(parsed[0].repetition_level, 0);
+        assert_eq!(parsed[1].repetition_level, 0);
+        assert_eq!(parsed[2].repetition_level, 0);
+    }
+
+    #[test]
+    fn test_multiple_nested_missing_fields() {
+        // message doc {
+        //  required group a {
+        //      required int x
+        //      optional int y },
+        //  optional int b }
+        let schema = SchemaBuilder::new("doc", vec![])
+            .field(required_group(
+                "a",
+                vec![integer("x"), optional_integer("y")],
+            ))
+            .field(optional_integer("b"))
+            .build();
+
+        // { a: { x: 1 } }
+        let value = ValueBuilder::new()
+            .field("a", ValueBuilder::new().field("x", 1).build())
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 3);
+
+        assert_eq!(parsed[0].value, Value::Integer(Some(1))); // a.x
+        assert_eq!(parsed[1].value, Value::Integer(None)); // a.y
+        assert_eq!(parsed[2].value, Value::Integer(None)); // b
+
+        assert_eq!(parsed[0].definition_level, 0);
+        assert_eq!(parsed[1].definition_level, 0);
+        assert_eq!(parsed[2].definition_level, 0);
+
+        assert_eq!(parsed[0].repetition_level, 0);
+        assert_eq!(parsed[1].repetition_level, 0);
+        assert_eq!(parsed[2].repetition_level, 0);
+    }
+
+    #[test]
+    fn test_missing_struct() {
+        // message doc {
+        //  optional group a {
+        //      required int x
+        //      optional int y },
+        //  required int b }
+        let schema = SchemaBuilder::new("doc", vec![])
+            .field(optional_group(
+                "a",
+                vec![integer("x"), optional_integer("y")],
+            ))
+            .field(integer("b"))
+            .build();
+
+        // { b: 1 }
+        let value = ValueBuilder::new().field("b", 1).build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 3);
+
+        assert_eq!(parsed[0].value, Value::Integer(Some(1))); // b
+        assert_eq!(parsed[1].value, Value::Integer(None)); // a.x
+        assert_eq!(parsed[2].value, Value::Integer(None)); // a.y
+
+        assert_eq!(parsed[0].definition_level, 0);
+        assert_eq!(parsed[1].definition_level, 0);
+        assert_eq!(parsed[2].definition_level, 0);
+
+        assert_eq!(parsed[0].repetition_level, 0);
+        assert_eq!(parsed[1].repetition_level, 0);
+        assert_eq!(parsed[2].repetition_level, 0);
+    }
+
+    #[test]
+    fn test_repeated_struct_with_missing_values() {
+        // message doc {
+        //  repeated group a {
+        //      required int x;
+        //      optional int y; }}
+        let schema = SchemaBuilder::new("doc", vec![])
+            .field(repeated_group(
+                "a",
+                vec![integer("x"), optional_integer("y")],
+            ))
+            .build();
+
+        // { a: [{x: 1}, {x: 2, y: 3}
+        let value = ValueBuilder::new()
+            .field(
+                "a",
+                vec![
+                    ValueBuilder::new().field("x", 1).build(),
+                    ValueBuilder::new().field("x", 2).field("y", 3).build(),
+                ],
+            )
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 4);
+
+        assert_eq!(parsed[0].value, Value::Integer(Some(1)));
+        assert_eq!(parsed[1].value, Value::Integer(None));
+        assert_eq!(parsed[2].value, Value::Integer(Some(2)));
+        assert_eq!(parsed[3].value, Value::Integer(Some(3)));
+
+        assert_eq!(parsed[0].definition_level, 1);
+        assert_eq!(parsed[1].definition_level, 1);
+        assert_eq!(parsed[2].definition_level, 1);
+        assert_eq!(parsed[3].definition_level, 2);
+
+        assert_eq!(parsed[0].repetition_level, 0);
+        assert_eq!(parsed[1].repetition_level, 0);
+        assert_eq!(parsed[2].repetition_level, 1);
+        assert_eq!(parsed[3].repetition_level, 1);
+    }
 }
