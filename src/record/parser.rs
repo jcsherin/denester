@@ -432,8 +432,7 @@ impl StripedColumnValue {
 
 #[derive(Debug, Default)]
 struct MissingFields {
-    optional: Vec<String>,
-    repeated: Vec<String>,
+    names: Vec<String>,
 }
 
 impl MissingFields {
@@ -453,31 +452,16 @@ impl MissingFields {
                 continue;
             }
 
-            // The list nullability is about whether it may contain null values. It may be either
-            // true or false. We do not want to classify a list as an optional field if it can have
-            // null values.
-            //
-            // So there is an order dependency here. We check if a field is repeated before we
-            // check if a field is marked as optional.
-            if field.is_repeated() {
-                missing_fields.repeated.push(field.name().to_string());
-                continue;
-            }
-
-            if field.is_optional() {
-                missing_fields.optional.push(field.name().to_string());
+            if !field.is_required() {
+                missing_fields.names.push(field.name().to_string());
             }
         }
 
         missing_fields
     }
 
-    fn optional(&self) -> &[String] {
-        self.optional.as_slice()
-    }
-
-    fn repeated(&self) -> &[String] {
-        self.repeated.as_slice()
+    fn names(&self) -> &[String] {
+        self.names.as_slice()
     }
 }
 
@@ -488,11 +472,7 @@ fn find_missing_paths(
 ) -> Vec<PathMetadata> {
     let mut missing_paths = vec![];
 
-    for field_name in missing_fields
-        .optional()
-        .iter()
-        .chain(missing_fields.repeated().iter())
-    {
+    for field_name in missing_fields.names() {
         let path = prefix.append_name(field_name.to_string());
 
         for path_metadata in paths {
