@@ -728,6 +728,10 @@ impl<'a> Iterator for ValueParser<'a> {
         if !self.state.missing_paths.is_empty() {
             let missing_path = self.state.missing_paths.pop_front().unwrap();
             let data_type = missing_path.field().data_type();
+
+            println!("level ctx stack: {:?}", self.state.computed_levels);
+            let common_prefix = missing_path.path();
+
             match data_type {
                 DataType::Boolean | DataType::Integer | DataType::String => {
                     let null_value = Value::create_null_or_empty(data_type);

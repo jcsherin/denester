@@ -13,7 +13,7 @@ type PathVector = Vec<String>;
 type PathVectorSlice<'a> = &'a [String];
 
 trait PathVectorExt {
-    fn longest_common_prefix(&self, other: &PathVector) -> PathVector;
+    fn longest_common_prefix(&self, other: PathVectorSlice) -> PathVector;
     fn format(&self) -> String;
     fn is_top_level(&self) -> bool;
     fn append_name(&self, name: String) -> PathVector;
@@ -21,7 +21,7 @@ trait PathVectorExt {
 }
 
 impl PathVectorExt for PathVector {
-    fn longest_common_prefix(&self, other: &PathVector) -> PathVector {
+    fn longest_common_prefix(&self, other: PathVectorSlice) -> PathVector {
         self.iter()
             .zip(other.iter())
             .take_while(|(a, b)| a == b)
