@@ -6,16 +6,18 @@ mod value;
 
 pub use field::{DataType, Field};
 pub use schema::{Schema, SchemaBuilder};
+use std::path::Path;
 pub use value::Value;
 
 type PathVector = Vec<String>;
+type PathVectorSlice<'a> = &'a [String];
 
 trait PathVectorExt {
     fn longest_common_prefix(&self, other: &PathVector) -> PathVector;
     fn format(&self) -> String;
     fn is_top_level(&self) -> bool;
     fn append_name(&self, name: String) -> PathVector;
-    fn from_slice(slice: &[String]) -> Self;
+    fn from_slice(slice: PathVectorSlice) -> Self;
 }
 
 impl PathVectorExt for PathVector {
@@ -44,7 +46,7 @@ impl PathVectorExt for PathVector {
         self.iter().cloned().chain(std::iter::once(name)).collect()
     }
 
-    fn from_slice(slice: &[String]) -> Self {
+    fn from_slice(slice: PathVectorSlice) -> Self {
         slice.to_vec()
     }
 }

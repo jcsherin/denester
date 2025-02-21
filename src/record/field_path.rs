@@ -1,14 +1,14 @@
-use crate::record::{DataType, Field, FieldLevel, Schema};
+use crate::record::{DataType, Field, FieldLevel, PathVector, PathVectorSlice, Schema};
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone)]
 pub struct FieldPath {
     field: Field,
-    path: Vec<String>,
+    path: PathVector,
 }
 
 impl FieldPath {
-    pub fn new(field: Field, path: Vec<String>) -> Self {
+    pub fn new(field: Field, path: PathVector) -> Self {
         Self { field, path }
     }
 
@@ -16,7 +16,7 @@ impl FieldPath {
         &self.field
     }
 
-    pub fn path(&self) -> &[String] {
+    pub fn path(&self) -> PathVectorSlice {
         &self.path
     }
 }
@@ -133,8 +133,8 @@ impl PathMetadata {
         }
     }
 
-    pub fn path(&self) -> &[String] {
-        &self.field_path.path()
+    pub fn path(&self) -> PathVectorSlice {
+        self.field_path.path()
     }
 
     pub fn len(&self) -> usize {
@@ -142,7 +142,7 @@ impl PathMetadata {
     }
 
     pub fn field(&self) -> &Field {
-        &self.field_path.field()
+        self.field_path.field()
     }
 
     pub fn max_repetition_level(&self) -> u8 {
