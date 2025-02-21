@@ -292,15 +292,6 @@ impl ValueParserState {
             .push(ListContext::new(field.name().to_string(), len));
     }
 
-    pub fn push_struct(&mut self, field: &Field) {
-        match field.data_type() {
-            DataType::Boolean | DataType::Integer | DataType::String | DataType::List(_) => {
-                unreachable!("expected struct {}", field)
-            }
-            DataType::Struct(fields) => self.struct_stack.push(fields.to_vec()),
-        }
-    }
-
     pub fn peek_struct(&self) -> Option<&Vec<Field>> {
         self.struct_stack.last()
     }
@@ -668,7 +659,17 @@ impl<'a> Iterator for ValueParser<'a> {
                             continue;
                         }
                         Value::Struct(_) => {
-                            self.state.push_struct(&field);
+                            match field.data_type() {
+                                DataType::Boolean
+                                | DataType::Integer
+                                | DataType::String
+                                | DataType::List(_) => {
+                                    unreachable!("expected struct {}", field)
+                                }
+                                DataType::Struct(fields) => {
+                                    self.state.struct_stack.push(fields.to_vec())
+                                }
+                            }
                             continue;
                         }
                     }
@@ -779,7 +780,6 @@ impl<'a> Iterator for ValueParser<'a> {
             }
         }
 
-        // TODO: generate NULL values when top-level optional/repeated paths are missing
         None
     }
 }
