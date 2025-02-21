@@ -723,14 +723,22 @@ impl<'a> Iterator for ValueParser<'a> {
             }
         }
 
+        // At the top-level if there is at least one present field which is processed the computed
+        // level stacks last level context will correspond to the last processed field. We do not
+        // need to compute common prefix, or path transitions because we know this is the top-level.
+        // The common prefix is going to be empty, and we need to pop exactly one level context.
+        //
+        // It is possible that top-level struct is empty and no fields were processed, so the guard
+        // here ensures that we do not accidentally pop the top-level context.
+        if self.state.computed_levels.len() > 1 {
+            self.state.computed_levels.pop().unwrap();
+        }
+
         // Handles missing fields in top-level
         // Emit null column value if there are missing paths in this level
         if !self.state.missing_paths.is_empty() {
             let missing_path = self.state.missing_paths.pop_front().unwrap();
             let data_type = missing_path.field().data_type();
-
-            println!("level ctx stack: {:?}", self.state.computed_levels);
-            let common_prefix = missing_path.path();
 
             match data_type {
                 DataType::Boolean | DataType::Integer | DataType::String => {
