@@ -676,6 +676,8 @@ impl<'a> Iterator for ValueParser<'a> {
                             Some(ctx) => ctx,
                         };
 
+                        // Extract repetition, definition levels before we advance the cursor to
+                        // the next position in this list context.
                         let (repetition_level, definition_level) = if list_context.position() > 0 {
                             (
                                 level_context.repetition_depth,
@@ -694,6 +696,12 @@ impl<'a> Iterator for ValueParser<'a> {
                             return Some(Err(ParseError::MissingListContext {
                                 path: path.clone(),
                             }));
+                        }
+
+                        if list_context.is_exhausted() {
+                            // Note: Safe to pop because we already extracted the repetition and
+                            // definition levels for this list item.
+                            self.state.list_stack.pop();
                         }
 
                         match field.data_type() {
