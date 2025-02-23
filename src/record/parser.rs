@@ -39,6 +39,9 @@ pub enum ParseError<'a> {
         field_name: String,
         value: Value,
     },
+    MissingStructContext {
+        path: Vec<String>,
+    },
 }
 
 impl<'a> From<TypeCheckError> for ParseError<'a> {
@@ -94,6 +97,13 @@ impl<'a> Display for ParseError<'a> {
                 write!(
                     f,
                     "Level context missing for computing levels. Path: {}",
+                    path.format()
+                )
+            }
+            ParseError::MissingStructContext { path } => {
+                write!(
+                    f,
+                    "Missing struct field definitions for path: {}",
                     path.format()
                 )
             }
@@ -300,6 +310,47 @@ impl ValueParserState {
         self.peek_struct()
             .and_then(|fields| fields.iter().find(|f| f.name() == name))
     }
+
+    /// Stack maintenance during backtracking in depth-first traversal
+    ///
+    /// ## Levels Stack
+    /// For a struct parent with 2 or more child properties, this takes into account the path
+    /// transition between sibling properties. All the level contexts are popped until the struct
+    /// parent context is at the top of the stack. So the next sibling can compute its repetition,
+    /// definition levels based on the parent level context.
+    ///
+    /// ## Struct Stack
+    /// On entering a struct value at the top-level or some nested level in the value, the fields
+    /// belonging to the struct are added to the stack. When visiting a child property of the
+    /// struct parent context is expected to be at the top of the stack. The key difference between
+    /// levels stack maintenance is that between transitions to siblings, the stack is not popped.
+    /// We pop the stack only when we exit a struct value through backtracking.
+    fn handle_backtracking(
+        &mut self,
+        path: &PathVector,
+        longest_common_prefix: &PathVector,
+    ) -> Result<(), ParseError> {
+        if path.len() <= self.prev_path.len() {
+            // path transition to sibling or parent
+            let pop_levels_count = self.prev_path.len() - longest_common_prefix.len();
+            for _ in 0..pop_levels_count {
+                if self.computed_levels.pop().is_none() {
+                    return Err(ParseError::MissingLevelContext { path: path.clone() });
+                }
+            }
+
+            if pop_levels_count > 1 {
+                let pop_structs_count = pop_levels_count - 1;
+                for _ in 0..pop_structs_count {
+                    if self.struct_stack.pop().is_none() {
+                        return Err(ParseError::MissingStructContext { path: path.clone() });
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a> ValueParser<'a> {
@@ -312,59 +363,6 @@ impl<'a> ValueParser<'a> {
             paths,
             value_iter,
             state,
-        }
-    }
-
-    /// Maintains level context state for column striping
-    ///
-    /// Updates the level context which contains the definition level, repetition depth and the
-    /// repetition level of the value node. A new level context is added to the stack during
-    /// depth-first traversal. On backtracking the common ancestor path prefix is used to figure out
-    /// how many level contexts needs to popped from the stack.
-    ///
-    /// TODO: refactor
-    /// TODO: Result return type, handle errors
-    fn update_level_context(
-        &mut self,
-        field: &Field,
-        current_path: &PathVector,
-        prev_path: &PathVector,
-        common_prefix: &PathVector,
-    ) {
-        let curr = match self.state.computed_levels.last() {
-            None => LevelContext::default().with_field(field),
-            Some(prev) => prev.with_field(field),
-        };
-
-        if let Some(pop_count) = self.state.prev_path.len().checked_sub(common_prefix.len()) {
-            if prev_path.is_empty() {
-                // But transition from 'a' to 'b' should have something to pop.
-                // Transitions from .top-level to 'a' on the other hand has an
-                // empty stack and therefore nothing needs to be popped.
-                println!(
-                    "nothing to pop at the top-level transition {} to {}",
-                    prev_path.format(),
-                    current_path.format()
-                );
-            } else {
-                println!(
-                    "prev_path: {} computed_levels: {}, pop_count: {}",
-                    prev_path.format(),
-                    self.state.computed_levels.len(),
-                    pop_count
-                );
-                for _ in 0..pop_count {
-                    if let Some(popped) = self.state.computed_levels.pop() {
-                        println!("{} Pop level context {:?}", current_path.format(), popped);
-                    } else {
-                        todo!("computed levels stack is empty!")
-                    }
-                }
-            }
-            println!("{} Push level context {:?}", current_path.format(), curr);
-            self.state.computed_levels.push(curr);
-        } else {
-            todo!("level context pop count subtraction overflowed")
         }
     }
 
@@ -556,21 +554,22 @@ impl<'a> Iterator for ValueParser<'a> {
             // `c` and `d`.
             let longest_common_prefix = path.longest_common_prefix(&self.state.prev_path);
 
-            if path.len() < self.state.prev_path.len() {
-                // backtracking in depth-first traversal
-                let pop_count = self.state.prev_path.len() - longest_common_prefix.len() - 1;
-                for _ in 0..pop_count {
-                    if let Some(fields) = self.state.struct_stack.pop() {
-                        println!("Popped struct stack: {:?}", fields);
-                    } else {
-                        todo!("No items in struct stack to pop. This is bad!")
-                    }
+            match self
+                .state
+                .handle_backtracking(&path, &longest_common_prefix)
+            {
+                Ok(_) => {}
+                Err(ParseError::MissingLevelContext { path }) => {
+                    return Some(Err(ParseError::MissingLevelContext { path: path.clone() }))
                 }
+                Err(ParseError::MissingStructContext { path }) => {
+                    return Some(Err(ParseError::MissingStructContext { path: path.clone() }))
+                }
+                Err(_) => {}
             }
 
             // Updates transitioned path in state for computing prefix for the next value to
             // determine stack maintenance.
-            let tmp_prev_path = self.state.prev_path.clone();
             self.state.prev_path = path.clone();
 
             let field = match path
@@ -594,12 +593,13 @@ impl<'a> Iterator for ValueParser<'a> {
 
             match value.type_check_shallow(&field, &path) {
                 Ok(_) => {
-                    self.update_level_context(
-                        &field,
-                        &path,
-                        &tmp_prev_path,
-                        &longest_common_prefix,
-                    );
+                    if let Some(parent_level_ctx) = self.state.computed_levels.last() {
+                        self.state
+                            .computed_levels
+                            .push(parent_level_ctx.with_field(&field))
+                    } else {
+                        return Some(Err(ParseError::MissingLevelContext { path: path.clone() }));
+                    }
 
                     match value {
                         Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
