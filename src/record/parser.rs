@@ -340,8 +340,28 @@ impl ValueParserState {
                 }
             }
 
-            if pop_levels_count > 1 {
-                let pop_structs_count = pop_levels_count - 1;
+            // The top-level struct fields used to initialize state must be protected and never
+            // popped.
+            //
+            // If the stack becomes empty, we lose the schema context necessary for type checking
+            // fields during backtracking path transitions to the top-level in depth-first value
+            // traversal.
+            if self.struct_stack.len() > 1 {
+                // When a path transitions from `a.b.c.d` to either:
+                //     1. `a.x`    (sibling transition)
+                //     2. `a`      (parent transition)
+                // the longest common prefix remains `['a']` in both cases.
+                //
+                // For sibling transition, we need to pop the stack 2 times because `x` is at the
+                // same level as `b`.
+                //
+                // For parent transition, we need to pop the stack 3 times to get `a` to the top
+                // of the stack.
+                let pop_structs_count = if longest_common_prefix.len() == path.len() {
+                    pop_levels_count
+                } else {
+                    pop_levels_count - 1
+                };
                 for _ in 0..pop_structs_count {
                     if self.struct_stack.pop().is_none() {
                         return Err(ParseError::MissingStructContext { path: path.clone() });
