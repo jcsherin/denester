@@ -5,6 +5,7 @@ use crate::record::{DataType, Field, PathVector, PathVectorExt, Schema, Value};
 use std::collections::{HashSet, VecDeque};
 use std::error::Error;
 use std::fmt::{write, Display, Formatter};
+use std::ops::Deref;
 use std::path::Path;
 
 #[derive(Debug)]
@@ -429,9 +430,24 @@ impl StripedColumnValue {
 }
 
 #[derive(Debug, Default)]
-struct MissingFields {
-    names: Vec<String>,
+struct FieldName(String);
+
+impl Deref for FieldName {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
+
+impl From<String> for FieldName {
+    fn from(s: String) -> Self {
+        FieldName(s)
+    }
+}
+
+#[derive(Debug, Default)]
+struct MissingFields(Vec<FieldName>);
 
 impl MissingFields {
     /// Returns missing fields of a struct value
@@ -439,56 +455,44 @@ impl MissingFields {
     /// Only optional and repeated fields are collected. If a required field is missing then the struct
     /// value has failed type checking.
     fn with_struct(props: &Vec<(String, Value)>, fields: &Vec<Field>) -> Self {
-        let mut missing_fields = MissingFields::default();
         let present_fields = props
             .iter()
             .map(|(name, _)| name.as_str())
             .collect::<HashSet<_>>();
 
-        for field in fields {
-            if present_fields.contains(field.name()) {
-                continue;
-            }
+        let missing_fields = fields
+            .iter()
+            .filter(|f| !present_fields.contains(f.name()) && !f.is_required())
+            .map(|f| FieldName::from(f.name().to_string()))
+            .collect();
 
-            if !field.is_required() {
-                missing_fields.names.push(field.name().to_string());
-            }
-        }
-
-        missing_fields
+        Self(missing_fields)
     }
+}
 
-    fn names(&self) -> &[String] {
-        self.names.as_slice()
+impl Deref for MissingFields {
+    type Target = [FieldName];
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
 fn find_missing_paths(
     prefix: &PathVector,
-    missing_fields: &MissingFields,
+    props: &Vec<(String, Value)>,
+    fields: &Vec<Field>,
     paths: &Vec<PathMetadata>,
 ) -> Vec<PathMetadata> {
-    let mut missing_paths = vec![];
-
-    for field_name in missing_fields.names() {
-        let path = prefix.append_name(field_name.to_string());
-
-        for path_metadata in paths {
-            if path.len() > path_metadata.len() {
-                continue;
-            }
-
-            if path
+    MissingFields::with_struct(&props, &fields)
+        .iter()
+        .flat_map(|field_name| {
+            let path = prefix.append_name(field_name.to_string());
+            paths
                 .iter()
-                .zip(path_metadata.path().iter())
-                .all(|(x, y)| x == y)
-            {
-                missing_paths.push(path_metadata.clone());
-            }
-        }
-    }
-
-    missing_paths
+                .filter(move |path_metadata| path_metadata.path().starts_with(&path))
+                .cloned()
+        })
+        .collect()
 }
 
 type StripedColumnResult<'a> = Result<StripedColumnValue, ParseError<'a>>;
@@ -526,8 +530,7 @@ impl<'a> Iterator for ValueParser<'a> {
                 };
                 match Value::type_check_struct_shallow(&props, &fields) {
                     Ok(_) => {
-                        let missing_fields = MissingFields::with_struct(&props, &fields);
-                        let missing_paths = find_missing_paths(&path, &missing_fields, &self.paths);
+                        let missing_paths = find_missing_paths(&path, &props, &fields, &self.paths);
                         if !missing_paths.is_empty() {
                             self.state.missing_paths = VecDeque::from(missing_paths); // removing from front is O(1)
                             println!("Adding missing paths: {:?}", self.state.missing_paths)
