@@ -5,6 +5,7 @@ use crate::record::{DataType, Field, PathVector, PathVectorExt, Schema, Value};
 use std::collections::{HashSet, VecDeque};
 use std::error::Error;
 use std::fmt::{write, Display, Formatter};
+use std::iter::Peekable;
 use std::ops::Deref;
 use std::path::Path;
 
@@ -231,7 +232,7 @@ impl LevelContext {
 pub struct ValueParser<'a> {
     schema: &'a Schema,
     paths: Vec<PathMetadata>,
-    value_iter: DepthFirstValueIterator<'a>,
+    value_iter: Peekable<DepthFirstValueIterator<'a>>,
     state: ValueParserState,
 }
 
@@ -378,6 +379,7 @@ impl<'a> ValueParser<'a> {
     fn new(schema: &'a Schema, value_iter: DepthFirstValueIterator<'a>) -> Self {
         let paths = PathMetadataIterator::new(schema).collect::<Vec<_>>();
         let state = ValueParserState::new(schema);
+        let value_iter = value_iter.peekable();
 
         Self {
             schema,
