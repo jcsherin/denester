@@ -327,51 +327,56 @@ impl ValueParserState {
     /// struct parent context is expected to be at the top of the stack. The key difference between
     /// levels stack maintenance is that between transitions to siblings, the stack is not popped.
     /// We pop the stack only when we exit a struct value through backtracking.
-    fn handle_backtracking(
-        &mut self,
-        path: &PathVector,
-        longest_common_prefix: &PathVector,
-    ) -> Result<(), ParseError> {
-        if path.len() <= self.prev_path.len() {
-            // path transition to sibling or parent
-            let pop_levels_count = self.prev_path.len() - longest_common_prefix.len();
-            for _ in 0..pop_levels_count {
-                if self.computed_levels.pop().is_none() {
-                    return Err(ParseError::MissingLevelContext { path: path.clone() });
-                }
-            }
+    fn handle_backtracking(&mut self, path: &PathVector, longest_common_prefix: &PathVector) {
+        // Applies only to path transitions to a sibling or returning to parent level
+        if path.len() > self.prev_path.len() {
+            return;
+        }
 
-            // The top-level struct fields used to initialize state must be protected and never
-            // popped.
-            //
-            // If the stack becomes empty, we lose the schema context necessary for type checking
-            // fields during backtracking path transitions to the top-level in depth-first value
-            // traversal.
-            if self.struct_stack.len() > 1 {
-                // When a path transitions from `a.b.c.d` to either:
-                //     1. `a.x`    (sibling transition)
-                //     2. `a`      (parent transition)
-                // the longest common prefix remains `['a']` in both cases.
-                //
-                // For sibling transition, we need to pop the stack 2 times because `x` is at the
-                // same level as `b`.
-                //
-                // For parent transition, we need to pop the stack 3 times to get `a` to the top
-                // of the stack.
-                let pop_structs_count = if longest_common_prefix.len() == path.len() {
-                    pop_levels_count
-                } else {
-                    pop_levels_count - 1
-                };
-                for _ in 0..pop_structs_count {
-                    if self.struct_stack.pop().is_none() {
-                        return Err(ParseError::MissingStructContext { path: path.clone() });
-                    }
-                }
+        let pop_levels_count = self.prev_path.len() - longest_common_prefix.len();
+
+        // The top-level computed level use to initialize state must be protected and never
+        // popped.
+        if self.computed_levels.len() > 1 {
+            let max_pop_count = self.computed_levels.len() - 1;
+            let actual_pop_count = std::cmp::min(pop_levels_count, max_pop_count);
+            for _ in 0..actual_pop_count {
+                self.computed_levels
+                    .pop()
+                    .expect("Stack error: base level context should be protected");
             }
         }
 
-        Ok(())
+        // The top-level struct fields used to initialize state must be protected and never
+        // popped.
+        //
+        // If the stack becomes empty, we lose the schema context necessary for type checking
+        // fields during backtracking path transitions to the top-level in depth-first value
+        // traversal.
+        if self.struct_stack.len() > 1 {
+            // When a path transitions from `a.b.c.d` to either:
+            //     1. `a.x`    (sibling transition)
+            //     2. `a`      (parent transition)
+            // the longest common prefix remains `['a']` in both cases.
+            //
+            // For sibling transition, we need to pop the stack 2 times because `x` is at the
+            // same level as `b`.
+            //
+            // For parent transition, we need to pop the stack 3 times to get `a` to the top
+            // of the stack.
+            let pop_structs_count = if longest_common_prefix.len() == path.len() {
+                pop_levels_count
+            } else {
+                pop_levels_count - 1
+            };
+            let max_pop_count = self.struct_stack.len() - 1;
+            let actual_pop_count = std::cmp::min(pop_structs_count, max_pop_count);
+            for _ in 0..actual_pop_count {
+                self.struct_stack
+                    .pop()
+                    .expect("Stack error: base struct fields context should be protected");
+            }
+        }
     }
 }
 
@@ -579,19 +584,8 @@ impl<'a> Iterator for ValueParser<'a> {
             // `c` and `d`.
             let longest_common_prefix = path.longest_common_prefix(&self.state.prev_path);
 
-            match self
-                .state
-                .handle_backtracking(&path, &longest_common_prefix)
-            {
-                Ok(_) => {}
-                Err(ParseError::MissingLevelContext { path }) => {
-                    return Some(Err(ParseError::MissingLevelContext { path: path.clone() }))
-                }
-                Err(ParseError::MissingStructContext { path }) => {
-                    return Some(Err(ParseError::MissingStructContext { path: path.clone() }))
-                }
-                Err(_) => {}
-            }
+            self.state
+                .handle_backtracking(&path, &longest_common_prefix);
 
             // Updates transitioned path in state for computing prefix for the next value to
             // determine stack maintenance.
