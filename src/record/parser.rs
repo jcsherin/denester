@@ -534,52 +534,6 @@ impl<'a> Iterator for ValueParser<'a> {
     /// collection of fields.
     fn next(&mut self) -> Option<Self::Item> {
         // TODO: Handle missing required fields when depth-first value iterator is exhausted
-        // Handle missing fields at struct top-level
-        if self.value_iter.peek().is_none() {
-            // The iterator returns a single NULL value for remaining missing paths at a time until
-            // there are no more missing paths remaining.
-            if self.state.missing_paths.is_empty() {
-                return None;
-            }
-
-            // The last value processed by the value iterator is not a root level property. So do
-            // regular stack maintenance as we have backtracked to the root level again.
-            if !self.state.prev_path.is_root() {
-                self.state
-                    .handle_backtracking(PathVector::root().as_ref(), PathVector::root().as_ref());
-            }
-
-            // Process missing fields in schema definition order
-            let missing_path = self.state.missing_paths.pop_front().unwrap();
-
-            let data_type = missing_path.field().data_type();
-            match data_type {
-                DataType::Boolean | DataType::Integer | DataType::String => {
-                    return Some(self.get_column_from_scalar(
-                        &PathVector::from_slice(missing_path.path()),
-                        &Value::create_null_or_empty(data_type),
-                    ))
-                }
-                DataType::List(inner) => match inner.as_ref() {
-                    DataType::Boolean | DataType::Integer | DataType::String => {
-                        return Some(self.get_column_from_scalar(
-                            &PathVector::from_slice(missing_path.path()),
-                            &Value::create_null_or_empty(inner.as_ref()),
-                        ));
-                    }
-                    DataType::List(_) => {
-                        unreachable!("not allowed")
-                    }
-                    DataType::Struct(_) => {
-                        unreachable!("leaf field cannot have a struct as list item")
-                    }
-                },
-                DataType::Struct(_) => {
-                    todo!("handle missing struct")
-                }
-            }
-        }
-
         while let Some((value, path)) = self.value_iter.next() {
             println!("~~~");
             println!("top-level: {}", path.is_empty());
@@ -797,7 +751,50 @@ impl<'a> Iterator for ValueParser<'a> {
             }
         }
 
-        None
+        // Handle missing fields at struct top-level
+
+        // The iterator returns a single NULL value for remaining missing paths at a time until
+        // there are no more missing paths remaining.
+        if self.state.missing_paths.is_empty() {
+            return None;
+        }
+
+        // The last value processed by the value iterator is not a root level property. So do
+        // regular stack maintenance as we have backtracked to the root level again.
+        if !self.state.prev_path.is_root() {
+            self.state
+                .handle_backtracking(PathVector::root().as_ref(), PathVector::root().as_ref());
+        }
+
+        // Process missing fields in schema definition order
+        let missing_path = self.state.missing_paths.pop_front().unwrap();
+
+        let data_type = missing_path.field().data_type();
+        match data_type {
+            DataType::Boolean | DataType::Integer | DataType::String => {
+                Some(self.get_column_from_scalar(
+                    &PathVector::from_slice(missing_path.path()),
+                    &Value::create_null_or_empty(data_type),
+                ))
+            }
+            DataType::List(inner) => match inner.as_ref() {
+                DataType::Boolean | DataType::Integer | DataType::String => {
+                    Some(self.get_column_from_scalar(
+                        &PathVector::from_slice(missing_path.path()),
+                        &Value::create_null_or_empty(inner.as_ref()),
+                    ))
+                }
+                DataType::List(_) => {
+                    unreachable!("not allowed")
+                }
+                DataType::Struct(_) => {
+                    unreachable!("leaf field cannot have a struct as list item")
+                }
+            },
+            DataType::Struct(_) => {
+                todo!("handle missing struct")
+            }
+        }
     }
 }
 
