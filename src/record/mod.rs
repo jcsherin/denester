@@ -9,6 +9,7 @@ pub use schema::{Schema, SchemaBuilder};
 use std::path::Path;
 pub use value::Value;
 
+// TODO: Convert `PathVector` to newtype instead of a type alias
 type PathVector = Vec<String>;
 type PathVectorSlice<'a> = &'a [String];
 

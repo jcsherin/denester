@@ -761,6 +761,8 @@ impl<'a> Iterator for ValueParser<'a> {
 
         // The last value processed by the value iterator is not a root level property. So do
         // regular stack maintenance as we have backtracked to the root level again.
+        //
+        // TODO: We need to handle backtracking exactly once per tree level
         if !self.state.prev_path.is_root() {
             self.state
                 .handle_backtracking(PathVector::root().as_ref(), PathVector::root().as_ref());
