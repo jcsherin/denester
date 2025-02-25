@@ -15,9 +15,10 @@ type PathVectorSlice<'a> = &'a [String];
 trait PathVectorExt {
     fn longest_common_prefix(&self, other: PathVectorSlice) -> PathVector;
     fn format(&self) -> String;
-    fn is_top_level(&self) -> bool;
+    fn is_root(&self) -> bool;
     fn append_name(&self, name: String) -> PathVector;
     fn from_slice(slice: PathVectorSlice) -> Self;
+    fn root() -> Self;
 }
 
 impl PathVectorExt for PathVector {
@@ -28,7 +29,6 @@ impl PathVectorExt for PathVector {
             .map(|(a, _)| a.clone())
             .collect::<Vec<_>>()
     }
-
     fn format(&self) -> String {
         if self.is_empty() {
             ".top-level".to_string()
@@ -37,7 +37,7 @@ impl PathVectorExt for PathVector {
         }
     }
 
-    fn is_top_level(&self) -> bool {
+    fn is_root(&self) -> bool {
         self.is_empty()
     }
 
@@ -48,6 +48,10 @@ impl PathVectorExt for PathVector {
 
     fn from_slice(slice: PathVectorSlice) -> Self {
         slice.to_vec()
+    }
+
+    fn root() -> Self {
+        Self::default()
     }
 }
 

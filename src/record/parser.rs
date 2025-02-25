@@ -292,7 +292,7 @@ impl ValueParserState {
             Self {
                 struct_stack: vec![fields],
                 list_stack: vec![],
-                prev_path: PathVector::default(),
+                prev_path: PathVector::root(),
                 computed_levels: vec![LevelContext::default()],
                 missing_paths: VecDeque::new(),
             }
@@ -546,7 +546,7 @@ impl<'a> Iterator for ValueParser<'a> {
             // At the top-level since the path is empty, it is not possible to search for the field by
             // name. So we extract the struct properties, and all the field definitions in the context
             // stack, and perform a shallow structural type-checking.
-            if path.is_top_level() {
+            if path.is_root() {
                 let props = match value {
                     Value::Struct(props) => props.to_vec(),
                     _ => return Some(Err(ParseError::UnexpectedTopLevelValue { value })),
