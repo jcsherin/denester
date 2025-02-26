@@ -1166,8 +1166,7 @@ mod tests {
             .filter_map(Result::ok)
             .collect::<Vec<_>>();
 
-        println!("{:?}", parsed);
-
+        assert_eq!(parsed.len(), 4);
         assert_eq!(parsed[0].value, Value::Integer(Some(20)));
         assert_eq!(parsed[1].value, Value::Integer(Some(40)));
         assert_eq!(parsed[2].value, Value::Integer(Some(60)));
@@ -1179,9 +1178,6 @@ mod tests {
         assert_eq!(parsed[0].repetition_level, 0);
         assert_eq!(parsed[1].repetition_level, 1);
         assert_eq!(parsed[2].repetition_level, 1);
-
-        // TODO: handle empty Backward list
-        assert_eq!(parsed.len(), 4);
     }
 
     #[test]
@@ -1240,6 +1236,21 @@ mod tests {
 
         // TODO: handle missing repeated fields
         assert_eq!(parsed.len(), 4);
+
+        assert_eq!(parsed[0].value, Value::String(Some(String::from("en-us"))));
+        assert_eq!(parsed[1].value, Value::String(Some(String::from("en"))));
+        assert_eq!(parsed[2].value, Value::String(None));
+        assert_eq!(parsed[3].value, Value::String(Some(String::from("en-gb"))));
+
+        assert_eq!(parsed[0].definition_level, 2);
+        assert_eq!(parsed[1].definition_level, 2);
+        assert_eq!(parsed[2].definition_level, 1);
+        assert_eq!(parsed[3].definition_level, 2);
+
+        assert_eq!(parsed[0].repetition_level, 0);
+        assert_eq!(parsed[1].repetition_level, 2);
+        assert_eq!(parsed[2].repetition_level, 1);
+        assert_eq!(parsed[3].repetition_level, 1);
     }
 
     #[test]
