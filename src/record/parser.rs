@@ -273,13 +273,68 @@ impl ListContext {
     }
 }
 
+#[derive(Debug)]
+struct DequeStack<T> {
+    stack: Vec<VecDeque<T>>,
+}
+
+impl<T> DequeStack<T> {
+    fn new() -> Self {
+        let stack: Vec<VecDeque<T>> = vec![];
+        Self { stack }
+    }
+
+    fn push_frame(&mut self, frame: Vec<T>) {
+        let frame = VecDeque::from(frame);
+        self.stack.push(frame);
+    }
+}
+
+impl<T> Default for DequeStack<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> From<Vec<T>> for DequeStack<T> {
+    fn from(value: Vec<T>) -> Self {
+        if value.is_empty() {
+            Self::default()
+        } else {
+            Self {
+                stack: vec![VecDeque::from(value)],
+            }
+        }
+    }
+}
+
+impl<T> Iterator for DequeStack<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Removes all empty deques from top
+        while self.stack.last().map_or(false, VecDeque::is_empty) {
+            self.stack.pop();
+        }
+
+        // Get an item from first non-empty deque
+        let item = self.stack.last_mut()?.pop_front();
+
+        // Pop the deque if it is now empty
+        if self.stack.last().map_or(false, VecDeque::is_empty) {
+            self.stack.pop();
+        }
+
+        item
+    }
+}
 #[derive(Default)]
 struct ValueParserState {
     struct_stack: Vec<Vec<Field>>,
     list_stack: Vec<ListContext>,
     prev_path: PathVector,
     computed_levels: Vec<LevelContext>,
-    missing_paths: VecDeque<PathMetadata>,
+    missing_path_frames: DequeStack<PathMetadata>,
 }
 
 impl ValueParserState {
@@ -294,7 +349,7 @@ impl ValueParserState {
                 list_stack: vec![],
                 prev_path: PathVector::root(),
                 computed_levels: vec![LevelContext::default()],
-                missing_paths: VecDeque::new(),
+                missing_path_frames: DequeStack::new(),
             }
         }
     }
@@ -559,10 +614,7 @@ impl<'a> Iterator for ValueParser<'a> {
                 match Value::type_check_struct_shallow(&props, &fields) {
                     Ok(_) => {
                         let missing_paths = find_missing_paths(&path, &props, &fields, &self.paths);
-                        if !missing_paths.is_empty() {
-                            self.state.missing_paths = VecDeque::from(missing_paths); // removing from front is O(1)
-                            println!("Adding missing paths: {:?}", self.state.missing_paths)
-                        }
+                        self.state.missing_path_frames = DequeStack::from(missing_paths);
                         continue;
                     }
                     Err(_) => {
@@ -751,14 +803,6 @@ impl<'a> Iterator for ValueParser<'a> {
             }
         }
 
-        // Handle missing fields at struct top-level
-
-        // The iterator returns a single NULL value for remaining missing paths at a time until
-        // there are no more missing paths remaining.
-        if self.state.missing_paths.is_empty() {
-            return None;
-        }
-
         // The last value processed by the value iterator is not a root level property. So do
         // regular stack maintenance as we have backtracked to the root level again.
         //
@@ -768,34 +812,36 @@ impl<'a> Iterator for ValueParser<'a> {
                 .handle_backtracking(PathVector::root().as_ref(), PathVector::root().as_ref());
         }
 
-        // Process missing fields in schema definition order
-        let missing_path = self.state.missing_paths.pop_front().unwrap();
-
-        let data_type = missing_path.field().data_type();
-        match data_type {
-            DataType::Boolean | DataType::Integer | DataType::String => {
-                Some(self.get_column_from_scalar(
-                    &PathVector::from_slice(missing_path.path()),
-                    &Value::create_null_or_empty(data_type),
-                ))
-            }
-            DataType::List(inner) => match inner.as_ref() {
+        // Handle missing fields at struct top-level
+        if let Some(missing_path) = self.state.missing_path_frames.next() {
+            let data_type = missing_path.field().data_type();
+            match data_type {
                 DataType::Boolean | DataType::Integer | DataType::String => {
                     Some(self.get_column_from_scalar(
                         &PathVector::from_slice(missing_path.path()),
-                        &Value::create_null_or_empty(inner.as_ref()),
+                        &Value::create_null_or_empty(data_type),
                     ))
                 }
-                DataType::List(_) => {
-                    unreachable!("not allowed")
-                }
+                DataType::List(inner) => match inner.as_ref() {
+                    DataType::Boolean | DataType::Integer | DataType::String => {
+                        Some(self.get_column_from_scalar(
+                            &PathVector::from_slice(missing_path.path()),
+                            &Value::create_null_or_empty(inner.as_ref()),
+                        ))
+                    }
+                    DataType::List(_) => {
+                        unreachable!("not allowed")
+                    }
+                    DataType::Struct(_) => {
+                        unreachable!("leaf field cannot have a struct as list item")
+                    }
+                },
                 DataType::Struct(_) => {
-                    unreachable!("leaf field cannot have a struct as list item")
+                    todo!("handle missing struct")
                 }
-            },
-            DataType::Struct(_) => {
-                todo!("handle missing struct")
             }
+        } else {
+            None
         }
     }
 }
