@@ -285,8 +285,14 @@ impl<T> DequeStack<T> {
     }
 
     fn push_frame(&mut self, frame: Vec<T>) {
-        let frame = VecDeque::from(frame);
-        self.stack.push(frame);
+        if !frame.is_empty() {
+            let frame = VecDeque::from(frame);
+            self.stack.push(frame);
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.stack.is_empty()
     }
 }
 
