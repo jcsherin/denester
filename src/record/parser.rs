@@ -810,6 +810,7 @@ impl<'a> Iterator for ValueParser<'a> {
         if let Some(missing_path) = self.state.missing_path_frames.next() {
             // Required to correctly setup stack contexts
             self.state.handle_backtracking(missing_path.path());
+            self.state.prev_path = PathVector::from(missing_path.path());
 
             let data_type = missing_path.field().data_type();
             match data_type {
