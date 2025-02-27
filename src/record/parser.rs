@@ -4,10 +4,9 @@ use crate::record::value::{DepthFirstValueIterator, TypeCheckError};
 use crate::record::{DataType, Field, PathVector, PathVectorExt, Schema, Value};
 use std::collections::{HashSet, VecDeque};
 use std::error::Error;
-use std::fmt::{write, Display, Formatter};
+use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
 use std::ops::Deref;
-use std::path::Path;
 
 #[derive(Debug)]
 pub enum ParseError<'a> {
@@ -204,15 +203,27 @@ type DefinitionLevel = u8;
 type RepetitionLevel = u8;
 type RepetitionDepth = u8;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct LevelContext {
     definition_level: DefinitionLevel,
     repetition_depth: RepetitionDepth,
     repetition_level: RepetitionLevel,
+    path: PathVector,
+}
+
+impl Default for LevelContext {
+    fn default() -> Self {
+        Self {
+            definition_level: 0,
+            repetition_depth: 0,
+            repetition_level: 0,
+            path: PathVector::root(),
+        }
+    }
 }
 
 impl LevelContext {
-    fn with_field(&self, field: &Field) -> Self {
+    fn with_field(&self, field: &Field, path: &PathVector) -> Self {
         let is_optional = field.is_optional();
         let is_repeated = matches!(field.data_type(), DataType::List(_));
 
@@ -225,7 +236,12 @@ impl LevelContext {
             definition_level,
             repetition_depth,
             repetition_level,
+            path: path.clone(),
         }
+    }
+
+    fn path(&self) -> &PathVector {
+        &self.path
     }
 }
 
@@ -334,9 +350,37 @@ impl<T> Iterator for DequeStack<T> {
         item
     }
 }
+
+#[derive(Debug, Default)]
+struct StructContext {
+    fields: Vec<Field>,
+    path: PathVector,
+}
+
+impl StructContext {
+    fn new(fields: Vec<Field>, path: PathVector) -> Self {
+        Self {
+            fields: fields,
+            path: path,
+        }
+    }
+
+    fn fields(&self) -> &[Field] {
+        self.fields.as_slice()
+    }
+
+    fn path(&self) -> &PathVector {
+        &self.path
+    }
+
+    fn find_field(&self, name: &str) -> Option<&Field> {
+        self.fields.iter().find(|f| f.name() == name)
+    }
+}
+
 #[derive(Default)]
 struct ValueParserState {
-    struct_stack: Vec<Vec<Field>>,
+    struct_stack: Vec<StructContext>,
     list_stack: Vec<ListContext>,
     prev_path: PathVector,
     computed_levels: Vec<LevelContext>,
@@ -348,10 +392,11 @@ impl ValueParserState {
         if schema.is_empty() {
             Self::default()
         } else {
-            let fields = schema.fields().to_vec();
-
             Self {
-                struct_stack: vec![fields],
+                struct_stack: vec![StructContext::new(
+                    schema.fields().to_vec(),
+                    PathVector::root(),
+                )],
                 list_stack: vec![],
                 prev_path: PathVector::root(),
                 computed_levels: vec![LevelContext::default()],
@@ -365,78 +410,40 @@ impl ValueParserState {
             .push(ListContext::new(field.name().to_string(), len));
     }
 
-    pub fn peek_struct(&self) -> Option<&Vec<Field>> {
+    pub fn peek_struct(&self) -> Option<&StructContext> {
         self.struct_stack.last()
     }
 
-    fn find_struct_field_by(&self, name: &str) -> Option<&Field> {
-        self.peek_struct()
-            .and_then(|fields| fields.iter().find(|f| f.name() == name))
+    fn find_field(&self, name: &str) -> Option<&Field> {
+        self.peek_struct().and_then(|ctx| ctx.find_field(name))
     }
 
     /// Stack maintenance during backtracking in depth-first traversal
-    ///
-    /// ## Levels Stack
-    /// For a struct parent with 2 or more child properties, this takes into account the path
-    /// transition between sibling properties. All the level contexts are popped until the struct
-    /// parent context is at the top of the stack. So the next sibling can compute its repetition,
-    /// definition levels based on the parent level context.
-    ///
-    /// ## Struct Stack
-    /// On entering a struct value at the top-level or some nested level in the value, the fields
-    /// belonging to the struct are added to the stack. When visiting a child property of the
-    /// struct parent context is expected to be at the top of the stack. The key difference between
-    /// levels stack maintenance is that between transitions to siblings, the stack is not popped.
-    /// We pop the stack only when we exit a struct value through backtracking.
-    fn handle_backtracking(&mut self, path: &PathVector, longest_common_prefix: &PathVector) {
-        // Applies only to path transitions to a sibling or returning to parent level
-        if path.len() > self.prev_path.len() {
+    fn handle_backtracking(&mut self, curr_path: &PathVector) {
+        // Traversal without backtracking. Proceed only if the path transitions to either a sibling
+        // or ancestor.
+        if curr_path.len() > self.prev_path.len() {
             return;
         }
 
-        let pop_levels_count = self.prev_path.len() - longest_common_prefix.len();
+        while self.computed_levels.len() > 1 {
+            let top = self.computed_levels.last().unwrap();
 
-        // The top-level computed level use to initialize state must be protected and never
-        // popped.
-        if self.computed_levels.len() > 1 {
-            let max_pop_count = self.computed_levels.len() - 1;
-            let actual_pop_count = std::cmp::min(pop_levels_count, max_pop_count);
-            for _ in 0..actual_pop_count {
-                self.computed_levels
-                    .pop()
-                    .expect("Stack error: base level context should be protected");
+            if top.path().is_root() || curr_path.starts_with(top.path()) {
+                break;
             }
+
+            self.computed_levels.pop().unwrap();
         }
 
-        // The top-level struct fields used to initialize state must be protected and never
-        // popped.
-        //
-        // If the stack becomes empty, we lose the schema context necessary for type checking
-        // fields during backtracking path transitions to the top-level in depth-first value
-        // traversal.
-        if self.struct_stack.len() > 1 {
-            // When a path transitions from `a.b.c.d` to either:
-            //     1. `a.x`    (sibling transition)
-            //     2. `a`      (parent transition)
-            // the longest common prefix remains `['a']` in both cases.
-            //
-            // For sibling transition, we need to pop the stack 2 times because `x` is at the
-            // same level as `b`.
-            //
-            // For parent transition, we need to pop the stack 3 times to get `a` to the top
-            // of the stack.
-            let pop_structs_count = if longest_common_prefix.len() == path.len() {
-                pop_levels_count
-            } else {
-                pop_levels_count - 1
-            };
-            let max_pop_count = self.struct_stack.len() - 1;
-            let actual_pop_count = std::cmp::min(pop_structs_count, max_pop_count);
-            for _ in 0..actual_pop_count {
-                self.struct_stack
-                    .pop()
-                    .expect("Stack error: base struct fields context should be protected");
+        while self.struct_stack.len() > 1 {
+            let top = self.struct_stack.last().unwrap();
+
+            if top.path().is_root() || curr_path.starts_with(top.path()) {
+                break;
             }
+
+            self.struct_stack.pop().unwrap();
         }
     }
 }
@@ -615,7 +622,7 @@ impl<'a> Iterator for ValueParser<'a> {
                 };
                 let fields = match self.state.peek_struct() {
                     None => return Some(Err(ParseError::FieldsNotFound { value })),
-                    Some(fields) => fields.to_vec(),
+                    Some(ctx) => ctx.fields.to_vec(),
                 };
                 match Value::type_check_struct_shallow(&props, &fields) {
                     Ok(_) => {
@@ -632,19 +639,7 @@ impl<'a> Iterator for ValueParser<'a> {
                 }
             }
 
-            // When backtracking in depth-first traversal, and on exiting a struct value it needs
-            // to be removed from the stack.
-            //
-            // For example the previous path is `a.b.c.d` and now has transitioned to `a.x`. To
-            // find the field definition for `x` we need to remove both `c` and `d` from the stack.
-            //
-            // From comparing the paths the common prefix is `a`. Both `b` and `x` are children
-            // and were added to the stack together. So we need to pop the stack twice to remove
-            // `c` and `d`.
-            let longest_common_prefix = path.longest_common_prefix(&self.state.prev_path);
-
-            self.state
-                .handle_backtracking(&path, &longest_common_prefix);
+            self.state.handle_backtracking(&path);
 
             // Updates transitioned path in state for computing prefix for the next value to
             // determine stack maintenance.
@@ -657,7 +652,7 @@ impl<'a> Iterator for ValueParser<'a> {
                 })
                 .and_then(|field_name| {
                     self.state
-                        .find_struct_field_by(field_name)
+                        .find_field(field_name)
                         .ok_or(ParseError::UnknownField {
                             field_name: field_name.clone(),
                             value: value.clone(),
@@ -674,7 +669,7 @@ impl<'a> Iterator for ValueParser<'a> {
                     if let Some(parent_level_ctx) = self.state.computed_levels.last() {
                         self.state
                             .computed_levels
-                            .push(parent_level_ctx.with_field(&field))
+                            .push(parent_level_ctx.with_field(&field, &path))
                     } else {
                         return Some(Err(ParseError::MissingLevelContext { path: path.clone() }));
                     }
@@ -724,9 +719,10 @@ impl<'a> Iterator for ValueParser<'a> {
                                 | DataType::List(_) => {
                                     unreachable!("expected struct {}", field)
                                 }
-                                DataType::Struct(fields) => {
-                                    self.state.struct_stack.push(fields.to_vec())
-                                }
+                                DataType::Struct(fields) => self
+                                    .state
+                                    .struct_stack
+                                    .push(StructContext::new(fields.to_vec(), path.clone())),
                             }
                             continue;
                         }
@@ -796,8 +792,9 @@ impl<'a> Iterator for ValueParser<'a> {
                                     ));
                                 }
                                 (Value::Struct(named_values), DataType::Struct(fields)) => {
-                                    // TODO: duplication with `self.state.push_struct` which takes &Field param
-                                    self.state.struct_stack.push(fields.to_vec())
+                                    self.state
+                                        .struct_stack
+                                        .push(StructContext::new(fields.to_vec(), path.clone()));
                                 }
                                 _ => todo!("value type does not match data type"),
                             },
@@ -814,8 +811,7 @@ impl<'a> Iterator for ValueParser<'a> {
         //
         // TODO: We need to handle backtracking exactly once per tree level
         if !self.state.prev_path.is_root() {
-            self.state
-                .handle_backtracking(PathVector::root().as_ref(), PathVector::root().as_ref());
+            self.state.handle_backtracking(PathVector::root().as_ref());
         }
 
         // Handle missing fields at struct top-level
@@ -856,12 +852,11 @@ impl<'a> Iterator for ValueParser<'a> {
 mod tests {
     use super::*;
     use crate::record::schema::{
-        bool, integer, optional_group, optional_integer, optional_string, repeated_group,
-        repeated_integer, required_group, string,
+        bool, integer, optional_group, optional_integer, repeated_group, repeated_integer,
+        required_group, string,
     };
     use crate::record::value::ValueBuilder;
     use crate::record::SchemaBuilder;
-    use std::fmt::format;
 
     #[test]
     fn test_optional_field_contains_null() {
