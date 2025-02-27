@@ -839,7 +839,7 @@ impl<'a> Iterator for ValueParser<'a> {
                     }
                 },
                 DataType::Struct(_) => {
-                    todo!("handle missing struct")
+                    unreachable!("leaf field cannot be a struct value")
                 }
             }
         } else {
