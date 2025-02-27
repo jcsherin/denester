@@ -1,7 +1,7 @@
 use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
 use crate::record::parser::ParseError::RequiredFieldIsNull;
 use crate::record::value::{DepthFirstValueIterator, TypeCheckError};
-use crate::record::{DataType, Field, PathVector, PathVectorExt, Schema, Value};
+use crate::record::{DataType, Field, PathVector, PathVectorExt, PathVectorSlice, Schema, Value};
 use std::collections::{HashSet, VecDeque};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -419,7 +419,7 @@ impl ValueParserState {
     }
 
     /// Stack maintenance during backtracking in depth-first traversal
-    fn handle_backtracking(&mut self, curr_path: &PathVector) {
+    fn handle_backtracking(&mut self, curr_path: PathVectorSlice) {
         // Traversal without backtracking. Proceed only if the path transitions to either a sibling
         // or ancestor.
         if curr_path.len() > self.prev_path.len() {
@@ -806,16 +806,11 @@ impl<'a> Iterator for ValueParser<'a> {
             }
         }
 
-        // The last value processed by the value iterator is not a root level property. So do
-        // regular stack maintenance as we have backtracked to the root level again.
-        //
-        // TODO: We need to handle backtracking exactly once per tree level
-        if !self.state.prev_path.is_root() {
-            self.state.handle_backtracking(PathVector::root().as_ref());
-        }
-
         // Handle missing fields at struct top-level
         if let Some(missing_path) = self.state.missing_path_frames.next() {
+            // Required to correctly setup stack contexts
+            self.state.handle_backtracking(missing_path.path());
+
             let data_type = missing_path.field().data_type();
             match data_type {
                 DataType::Boolean | DataType::Integer | DataType::String => {
