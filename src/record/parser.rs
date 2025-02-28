@@ -446,7 +446,9 @@ impl ValueParserState {
         while self.struct_stack.len() > 1 {
             let top = self.struct_stack.last().unwrap();
 
-            if top.path().is_root() || curr_path.starts_with(top.path()) {
+            if top.path().is_root()
+                || (top.path().len() < curr_path.len() && curr_path.starts_with(top.path()))
+            {
                 break;
             }
 
