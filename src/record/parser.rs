@@ -252,20 +252,27 @@ pub struct ValueParser<'a> {
     state: ValueParserState,
 }
 
+#[derive(Debug)]
 struct ListContext {
     field_name: String,
     length: usize,
     current_index: usize,
+    depth: usize,
 }
 
 impl ListContext {
     // TODO: Do not allow creating a list context with length zero
-    fn new(field_name: String, length: usize) -> Self {
+    fn new(field_name: String, length: usize, depth: usize) -> Self {
         Self {
             field_name,
             length,
             current_index: 0,
+            depth,
         }
+    }
+
+    fn depth(&self) -> usize {
+        self.depth
     }
 
     pub fn field_name(&self) -> &str {
@@ -405,9 +412,9 @@ impl ValueParserState {
         }
     }
 
-    pub fn push_list(&mut self, field: &Field, len: usize) {
+    pub fn push_list(&mut self, field: &Field, len: usize, path: &PathVector) {
         self.list_stack
-            .push(ListContext::new(field.name().to_string(), len));
+            .push(ListContext::new(field.name().to_string(), len, path.len()));
     }
 
     pub fn peek_struct(&self) -> Option<&StructContext> {
@@ -444,6 +451,18 @@ impl ValueParserState {
             }
 
             self.struct_stack.pop().unwrap();
+        }
+
+        // TODO: add `depth` method to PathVector
+        let curr_depth = curr_path.len();
+        while !self.list_stack.is_empty() && self.list_stack.last().unwrap().depth > curr_depth {
+            let popped = self.list_stack.pop();
+            println!(
+                "backtracking: popped list context at depth {}: {:#?}. current depth: {}",
+                popped.as_ref().unwrap().depth,
+                popped.as_ref().unwrap(),
+                curr_depth,
+            );
         }
     }
 }
@@ -708,7 +727,8 @@ impl<'a> Iterator for ValueParser<'a> {
                             }
                         }
                         Value::List(items) => {
-                            self.state.push_list(&field, items.len());
+                            println!("Adding a new frame to list stack");
+                            self.state.push_list(&field, items.len(), &path);
                             continue;
                         }
                         Value::Struct(_) => {
