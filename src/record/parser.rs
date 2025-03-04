@@ -621,6 +621,24 @@ impl<'a> Iterator for ValueParser<'a> {
     /// both value and schema then we can immediately do type checking because the
     /// Schema top-level datatype is always going to be a Struct and not just a loose
     /// collection of fields.
+    ///
+    /// # Queue Processing - A Sketch
+    /// The current approach loops through the depth-first value iterator and returns a column
+    /// value when it reaches the leaf of a path. The control flow contains explicit `continue`
+    /// and implicit continuations to get the next item from the value iterator. These continuations
+    /// make it hard to pause value iteration and handle the paths which are missing at the struct
+    /// level.
+    ///
+    /// An imperative approach is to design a state machine for transitions. So if we have processed
+    /// all the present fields, and if there are missing fields then the state is transitioned to
+    /// processing missing paths before returning to value iteration state. A terminal state is also
+    /// needed to handle all the remaining missing paths when the value iterator is exhausted.
+    ///
+    /// A better approach will be to decoupled traversal logic from column-striping processor using
+    /// a queue to manage the order in which work is done. The existing depth-first traversal is
+    /// used to fill the task queue. But if at a struct there are missing paths to process they are
+    /// added to the queue. The processing of the items in the work queue is not tightly coupled
+    /// to the order of traversal anymore.
     fn next(&mut self) -> Option<Self::Item> {
         // TODO: Handle missing required fields when depth-first value iterator is exhausted
         while let Some((value, path)) = self.value_iter.next() {
