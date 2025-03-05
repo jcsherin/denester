@@ -177,7 +177,7 @@ pub struct ValueParser<'a> {
     schema: &'a Schema,
     paths: Vec<PathMetadata>,
     value_iter: Peekable<DepthFirstValueIterator<'a>>,
-    state: ValueParserState,
+    state: ValueParserState<'a>,
 }
 
 #[derive(Debug)]
@@ -313,16 +313,23 @@ impl StructContext {
     }
 }
 
+#[derive(Debug)]
+enum WorkItem<'a> {
+    VisitValue(&'a Value, PathVector),
+    HandleMissingPath(PathMetadata),
+}
+
 #[derive(Default)]
-struct ValueParserState {
+struct ValueParserState<'a> {
     struct_stack: Vec<StructContext>,
     list_stack: Vec<ListContext>,
     prev_path: PathVector,
     computed_levels: Vec<LevelContext>,
+    queue: VecDeque<WorkItem<'a>>,
     missing_path_frames: DequeStack<PathMetadata>,
 }
 
-impl ValueParserState {
+impl<'a> ValueParserState<'a> {
     pub fn new(schema: &Schema) -> Self {
         if schema.is_empty() {
             Self::default()
@@ -335,6 +342,7 @@ impl ValueParserState {
                 list_stack: vec![],
                 prev_path: PathVector::root(),
                 computed_levels: vec![LevelContext::default()],
+                queue: VecDeque::new(),
                 missing_path_frames: DequeStack::new(),
             }
         }
@@ -568,6 +576,61 @@ impl<'a> Iterator for ValueParser<'a> {
     /// added to the queue. The processing of the items in the work queue is not tightly coupled
     /// to the order of traversal anymore.
     fn next(&mut self) -> Option<Self::Item> {
+        /// The current control flow either returns a terminal column value or ends up in an
+        /// explicit/implicit continuation of the depth-first value iterator. This makes it quite
+        /// hard to handle missing paths at a value node level before resuming value traversal.
+        ///
+        /// There are the following cases to handle:
+        ///     - Iterate depth-first over value to return a column value on reaching the terminal
+        /// node in the path
+        ///     - If there are missing paths at a level, they need to processed after all present
+        /// properties at that level has been processed. Only then do we process the next value
+        /// in the iterator.
+        ///     - The value iterator is exhausted, and we process all the remaining paths.
+        ///
+        /// The traversal logic has to be decoupled from the processing fields logic for this code
+        /// to be easier to maintain. I considered implementing this as state machine transitions,
+        /// which could make this easier to understand. The control flow remains the same, and we
+        /// encode explicit state transitions at each step. The traversal and processing remains
+        /// tightly coupled.
+        ///
+        /// Instead, a queue can be added to the `ValueParserState`, and the work items will be
+        /// processed based on their priority. The highest priority is processing missing paths
+        /// for a level. And normal priority for processing a value. So enqueue missing path work
+        /// items once we have processed all the present fields in a level. The level transition,
+        /// specifically the backtracking to sibling or parent can be detected for enqueuing
+        /// missing paths.
+        ///
+        /// Implementation Sketch,
+        /// loop {
+        ///     1_handle_work_queue_item
+        ///         VisitValue => {
+        ///            // Handle backtracking
+        ///            // Save previous path to state
+        ///            // Match value by type
+        ///            //   Scalar types return a value immediately
+        ///            //   Empty list return a value immediately
+        ///            //   But if empty list type is a struct then we queue missing paths instead
+        ///            //   Otherwise for a non-empty list add to stack and continue
+        ///            //   For struct add to stack and continue
+        ///         }
+        ///         HandleMissingPath => { ... }
+        ///
+        ///     // work queue is empty so get the next value from iterator
+        ///     2_get_next_value_from_iterator
+        ///         if is_sibling_transition || backtracking_transition {
+        ///             queue_missing_paths
+        ///         }
+        ///         queue_value_visitor
+        ///
+        ///    // value iterator is exhausted so queue remaining missing paths
+        ///     3_queue_remaining_missing_paths
+        ///         while !struct_fields_stack.empty {
+        ///             pop_struct_fields_frame
+        ///             queue_missing_paths
+        ///         }
+        /// }
+        ///
         // TODO: Handle missing required fields when depth-first value iterator is exhausted
         while let Some((value, path)) = self.value_iter.next() {
             println!("~~~");
