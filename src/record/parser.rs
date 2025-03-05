@@ -812,12 +812,6 @@ impl<'a> Iterator for ValueParser<'a> {
                             }));
                         }
 
-                        if list_context.is_exhausted() {
-                            // Note: Safe to pop because we already extracted the repetition and
-                            // definition levels for this list item.
-                            self.state.list_stack.pop();
-                        }
-
                         match field.data_type() {
                             DataType::List(item_type) => match (value, item_type.as_ref()) {
                                 (Value::Boolean(_), DataType::Boolean)
