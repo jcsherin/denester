@@ -287,6 +287,7 @@ impl Value {
     }
 }
 
+#[derive(Debug)]
 pub enum TypeCheckError {
     DataTypeMismatch {
         value: Value,

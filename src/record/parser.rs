@@ -633,15 +633,6 @@ impl<'a> Iterator for ValueParser<'a> {
         ///
         // TODO: Handle missing required fields when depth-first value iterator is exhausted
         while let Some((value, path)) = self.value_iter.next() {
-            println!("~~~");
-            println!("top-level: {}", path.is_empty());
-            println!("value: {}", value);
-            println!(
-                "path transition {} to {}",
-                self.state.prev_path.format(),
-                path.format()
-            );
-
             // At the top-level since the path is empty, it is not possible to search for the field by
             // name. So we extract the struct properties, and all the field definitions in the context
             // stack, and perform a shallow structural type-checking.
@@ -670,10 +661,42 @@ impl<'a> Iterator for ValueParser<'a> {
             }
 
             self.state.handle_backtracking(&path);
-
-            // Updates transitioned path in state for computing prefix for the next value to
-            // determine stack maintenance.
+            let saved_prev_path = self.state.prev_path.clone();
             self.state.prev_path = path.clone();
+
+            println!("-----------");
+            println!("{:#?} -> {:#?}", saved_prev_path.format(), path.format());
+            println!("value: {:?}", value);
+            println!(
+                "active frame [struct]: {:?}",
+                self.state.struct_stack.last().unwrap()
+            );
+            if self.state.struct_stack.len() >= 2 {
+                println!(
+                    "parent frame [struct]: {:?}",
+                    self.state.struct_stack.iter().rev().nth(1).unwrap()
+                );
+            }
+            println!("active frame [list]: {:?}", self.state.list_stack.last());
+            if self.state.list_stack.len() >= 2 {
+                println!(
+                    "parent frame [list]: {:?}",
+                    self.state.list_stack.iter().rev().nth(1).unwrap()
+                );
+            }
+            println!(
+                "active frame [level]: {:?}",
+                self.state.computed_levels.last()
+            );
+            if self.state.computed_levels.len() >= 2 {
+                println!(
+                    "parent frame [level]: {:?}",
+                    self.state.computed_levels.iter().rev().nth(1).unwrap()
+                );
+            }
+            if !self.state.missing_path_frames.is_empty() {
+                println!("missing_path_frames: {:?}", self.state.missing_path_frames);
+            }
 
             let field = match path
                 .last()
@@ -690,6 +713,7 @@ impl<'a> Iterator for ValueParser<'a> {
                 }) {
                 Ok(f) => f.clone(),
                 Err(err) => {
+                    println!("Failed to find field {}", err);
                     return Some(Err(err));
                 }
             };
@@ -701,18 +725,18 @@ impl<'a> Iterator for ValueParser<'a> {
                             .computed_levels
                             .push(parent_level_ctx.with_field(&field, &path))
                     } else {
+                        println!("Failed to find parent level ctx");
                         return Some(Err(ParseError::MissingLevelContext { path: path.clone() }));
                     }
 
                     match value {
                         Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
-                            return Some(self.get_column_from_scalar(&path, &value));
+                            let column_value = self.get_column_from_scalar(&path, &value);
+                            println!("Column-striped value: {:?}", column_value);
+                            return Some(column_value);
                         }
                         Value::List(items) if items.is_empty() => {
-                            println!("path: {}", path.format());
-                            for path_metadata in &self.paths {
-                                println!("{}", path_metadata);
-                            }
+                            println!("Processing an empty list");
                             /// There are two possible states here:
                             ///  - scalar type list item (single column)
                             ///  - struct list item (one or more columns)
@@ -723,14 +747,16 @@ impl<'a> Iterator for ValueParser<'a> {
                                     DataType::Boolean | DataType::Integer | DataType::String => {
                                         let null_value =
                                             Value::create_null_or_empty(inner.as_ref());
-                                        return Some(
-                                            self.get_column_from_scalar(&path, &null_value),
-                                        );
+                                        let column_value =
+                                            self.get_column_from_scalar(&path, &null_value);
+                                        println!("Column-striped value: {:?}", column_value);
+                                        return Some(column_value);
                                     }
                                     DataType::List(_) => {
                                         unreachable!("empty list: nested list types not allowed")
                                     }
                                     DataType::Struct(_) => {
+                                        println!("Null buffering for empty struct in list not implemented");
                                         todo!("handle null buffering for struct fields")
                                     }
                                 },
@@ -743,6 +769,7 @@ impl<'a> Iterator for ValueParser<'a> {
                             continue;
                         }
                         Value::Struct(_) => {
+                            println!("Adding a new frame to struct stack");
                             match field.data_type() {
                                 DataType::Boolean
                                 | DataType::Integer
@@ -761,8 +788,8 @@ impl<'a> Iterator for ValueParser<'a> {
                 }
                 Err(type_check_err) => match field.data_type() {
                     DataType::List(_) => {
-                        println!("expecting list item {}", value);
-
+                        println!("Type check err: {:?}", type_check_err);
+                        println!("Now processing a list item");
                         let list_context = match self.state.list_stack.last_mut() {
                             None => {
                                 return Some(Err(ParseError::MissingListContext {
@@ -795,9 +822,11 @@ impl<'a> Iterator for ValueParser<'a> {
                             )
                         };
                         list_context.increment();
+                        println!("list index position incremented: {:?}", list_context);
 
                         // List context mismatch with current list
                         if field.name() != list_context.field_name() {
+                            println!("Error: field name does not match the list field name");
                             return Some(Err(ParseError::MissingListContext {
                                 path: path.clone(),
                             }));
@@ -808,15 +837,23 @@ impl<'a> Iterator for ValueParser<'a> {
                                 (Value::Boolean(_), DataType::Boolean)
                                 | (Value::Integer(_), DataType::Integer)
                                 | (Value::String(_), DataType::String) => {
-                                    return Some(self.get_column_from_scalar_list(
+                                    let column_value = self.get_column_from_scalar_list(
                                         &path,
                                         &field,
                                         value,
                                         repetition_level,
                                         definition_level,
-                                    ));
+                                    );
+                                    println!("Column-striped value: {:?}", column_value);
+                                    return Some(column_value);
                                 }
-                                (Value::Struct(named_values), DataType::Struct(fields)) => {
+                                (Value::Struct(props), DataType::Struct(fields)) => {
+                                    if props.is_empty() {
+                                        let missing_paths =
+                                            find_missing_paths(&path, props, fields, &self.paths);
+                                        println!("Oops! This struct value is empty! Need to handle all missing paths here! {:#?}", missing_paths);
+                                    }
+                                    println!("Add a new frame to struct stack");
                                     self.state
                                         .struct_stack
                                         .push(StructContext::new(fields.to_vec(), path.clone()));
@@ -833,6 +870,7 @@ impl<'a> Iterator for ValueParser<'a> {
 
         // Handle missing fields at struct top-level
         if let Some(missing_path) = self.state.missing_path_frames.next() {
+            println!("Processing missing_path: {:?}", missing_path);
             // Required to correctly setup stack contexts
             self.state.handle_backtracking(missing_path.path());
             self.state.prev_path = PathVector::from(missing_path.path());
