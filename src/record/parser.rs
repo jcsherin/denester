@@ -419,6 +419,28 @@ impl<'a> ValueParser<'a> {
         }
     }
 
+    /// Checks if path transition is horizontal or upwards, never downwards.
+    ///
+    /// Returns true if path transitions to:
+    ///     * a sibling,
+    ///     * a parent,
+    ///     * or different branch.
+    ///
+    /// Return false when path transitions to:
+    ///     * a child
+    ///     * a top-level field from the root
+    fn is_level_transition(&self, curr_path: &PathVector) -> bool {
+        // Always returns false when transition is from root
+        if self.state.prev_path.is_root() {
+            return false;
+        }
+
+        // Either current path is a different branch or, at the same level (sibling), or moved to a
+        // higher level in the tree
+        !curr_path.starts_with(&self.state.prev_path)
+            || curr_path.len() <= self.state.prev_path.len()
+    }
+
     fn get_column_from_scalar(
         &self,
         path: &PathVector,
