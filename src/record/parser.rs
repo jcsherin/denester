@@ -425,17 +425,17 @@ impl<'a> ValueParser<'a> {
     }
 
     /// Queue missing paths for current struct level
-    fn queue_missing_paths(&mut self) {
-        if let Some(struct_fields_frame) = self.state.peek_struct() {
-            if let Some((Value::Struct(props), path)) = self.value_iter.peek() {
-                self.missing_paths_queue.extend(
-                    find_missing_paths(path, props, struct_fields_frame.fields(), &self.paths)
-                        .iter()
-                        .map(|path_metadata| WorkItem::MissingValue(path_metadata.clone())),
-                )
-            }
-        }
-    }
+    // fn queue_missing_paths(&mut self) {
+    //     if let Some(struct_fields_frame) = self.state.peek_struct() {
+    //         if let Some((Value::Struct(props), path)) = self.value_iter.peek() {
+    //             self.missing_paths_queue.extend(
+    //                 find_missing_paths(path, props, struct_fields_frame.fields(), &self.paths)
+    //                     .iter()
+    //                     .map(|path_metadata| WorkItem::MissingValue(path_metadata.clone())),
+    //             )
+    //         }
+    //     }
+    // }
 
     fn process_missing_path(&mut self, missing_path: &PathMetadata) -> StripedColumnResult {
         self.state.handle_backtracking(missing_path.path());
