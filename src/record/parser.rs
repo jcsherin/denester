@@ -646,7 +646,7 @@ impl<'a> Iterator for ValueParser<'a> {
                 /// If the previous path is "a.b" and the next value is in the path "c.d" and the
                 /// following missing paths are buffered: "a.b.x.y", "a.b.z". This ensures that
                 /// the order in which they are added to work queue is: "a.b.x.y", "a.b.z", "c.d".
-                if path.starts_with(&self.state.prev_path) {
+                if !path.starts_with(&self.state.prev_path) {
                     let mut buffer = self.state.missing_paths_buffer.by_ref().peekable();
                     let mut missing_paths = vec![];
 
