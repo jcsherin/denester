@@ -181,7 +181,6 @@ pub struct ValueParser<'a> {
 
     // Queues for handling values and missing paths in correct order
     work_queue: VecDeque<WorkItem<'a>>,
-    missing_paths_queue: VecDeque<WorkItem<'a>>,
 }
 
 #[derive(Debug)]
@@ -329,7 +328,7 @@ struct ValueParserState {
     list_stack: Vec<ListContext>,
     prev_path: PathVector,
     computed_levels: Vec<LevelContext>,
-    missing_path_frames: DequeStack<PathMetadata>,
+    missing_paths_buffer: DequeStack<PathMetadata>,
 }
 
 impl ValueParserState {
@@ -345,7 +344,7 @@ impl ValueParserState {
                 list_stack: vec![],
                 prev_path: PathVector::root(),
                 computed_levels: vec![LevelContext::default()],
-                missing_path_frames: DequeStack::new(),
+                missing_paths_buffer: DequeStack::new(),
             }
         }
     }
@@ -413,26 +412,7 @@ impl<'a> ValueParser<'a> {
         let state = ValueParserState::new(schema);
 
         let mut value_iter = value_iter.peekable();
-        let mut work_queue = VecDeque::new();
-        let mut missing_paths_queue = VecDeque::new();
-
-        if let Some((root_value, root_path)) = value_iter.next() {
-            debug_assert!(root_path.is_root());
-
-            if let Value::Struct(props) = root_value {
-                if props.is_empty() && !schema.fields().is_empty() {
-                    // Handle empty value by queueing missing paths now
-                    let missing_paths =
-                        find_missing_paths(&root_path, props, schema.fields(), &paths);
-                    missing_paths_queue
-                        .extend(missing_paths.into_iter().map(WorkItem::MissingValue))
-                } else {
-                    work_queue.push_back(WorkItem::Value(root_value, root_path));
-                }
-            }
-        } else {
-            unimplemented!("Handle the value iterator being empty before first use")
-        }
+        let work_queue = VecDeque::new();
 
         Self {
             schema,
@@ -440,10 +420,6 @@ impl<'a> ValueParser<'a> {
             value_iter,
             state,
             work_queue,
-            missing_paths_queue,
-        }
-    }
-
         }
     }
 
