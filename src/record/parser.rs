@@ -599,367 +599,78 @@ type StripedColumnResult<'a> = Result<StripedColumnValue, ParseError<'a>>;
 impl<'a> Iterator for ValueParser<'a> {
     type Item = StripedColumnResult<'a>;
 
-    /// TODO: Enforce top-level Struct in Schema & Value
-    /// Right now top-level is a collection of fields and therefore we are unable to do
-    /// type-checking without additional checks. When top-level Struct is enforced for
-    /// both value and schema then we can immediately do type checking because the
-    /// Schema top-level datatype is always going to be a Struct and not just a loose
-    /// collection of fields.
+    /// A column value is returned by traversing from root to leaf in depth-first order. For partial
+    /// or missing paths, a NULL column value is returned. So after processing all the present
+    /// properties of a struct, the depth-first traversal is suspended. Then the missing paths of
+    /// the struct are processed in the order of field definitions in the schema. After that normal
+    /// depth-first value traversal continues.
     ///
-    /// # Queue Processing - A Sketch
-    /// The current approach loops through the depth-first value iterator and returns a column
-    /// value when it reaches the leaf of a path. The control flow contains explicit `continue`
-    /// and implicit continuations to get the next item from the value iterator. These continuations
-    /// make it hard to pause value iteration and handle the paths which are missing at the struct
-    /// level.
+    /// There is a tight coupling between depth-first value traversal and computing column values.
+    /// A column value is computed only after visiting a leaf node, or when processing the buffer
+    /// for missing paths. This implementation uses a work queue to maintain the order of column
+    /// value outputs, and makes processing of column values independent of traversal logic.
     ///
-    /// An imperative approach is to design a state machine for transitions. So if we have processed
-    /// all the present fields, and if there are missing fields then the state is transitioned to
-    /// processing missing paths before returning to value iteration state. A terminal state is also
-    /// needed to handle all the remaining missing paths when the value iterator is exhausted.
-    ///
-    /// A better approach will be to decoupled traversal logic from column-striping processor using
-    /// a queue to manage the order in which work is done. The existing depth-first traversal is
-    /// used to fill the task queue. But if at a struct there are missing paths to process they are
-    /// added to the queue. The processing of the items in the work queue is not tightly coupled
-    /// to the order of traversal anymore.
+    /// Process work queue entries until it becomes empty. If the work queue is empty get the next
+    /// value from the depth-first value iterator. If the traversal transitioned to either a sibling
+    /// node or an ancestor node, then add a single frame of buffered missing paths to the work
+    /// queue followed by the next value to the queue. So missing paths are processed after all the
+    /// present properties. If the value iterator is exhausted, then add buffered missing paths
+    /// to the work queue until the stack is empty. Finally, add a sentinel to signal end of value
+    /// to the work queue.
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if let Some(work_item) = self.work_queue.pop_front() {
-            } else if let Some((value, path)) = self.value_iter.next() {
-            } else if !self.missing_paths_queue.is_empty() {
-            } else {
-                return None;
+            if let Some(task) = self.work_queue.iter().next() {
+                // Value is processed here
             }
+
+            if let Some((value, path)) = self.value_iter.next() {
+                /// Checks if path transitions to a sibling or an ancestor, and not to a child.
+                ///
+                /// The following path transitions are downwards:
+                ///     * Root to child (prev: ., curr: "a")
+                ///     * Downward to child (prev: "a.b", curr: "a.b.c")
+                ///
+                /// The following path transitions are either horizontal or upwards:
+                ///     * Sibling transitions (prev: "a.b", curr: "a.c")
+                ///     * Ancestor transitions (prev: "a.b.c", curr: "a")
+                ///     * Branch changes (prev: "a.b", curr: "c.d")
+                ///
+                /// There are paths which are defined in the schema but missing in the value. These
+                /// missing paths are buffered so that a NULL value can be output for each missing
+                /// path later.
+                ///
+                /// When transitioning to either a sibling (horizontal) or to an ancestor (upwards)
+                /// the missing paths which share a prefix with the previous path are to be
+                /// processed before the next value.
+                ///
+                /// If the previous path is "a.b" and the next value is in the path "c.d" and the
+                /// following missing paths are buffered: "a.b.x.y", "a.b.z". This ensures that
+                /// the order in which they are added to work queue is: "a.b.x.y", "a.b.z", "c.d".
+                if path.starts_with(&self.state.prev_path) {
+                    let mut buffer = self.state.missing_paths_buffer.by_ref().peekable();
+                    let mut missing_paths = vec![];
+
+                    while let Some(missing) = buffer.peek() {
+                        if !missing.path().starts_with(&self.state.prev_path) {
+                            break;
+                        }
+
+                        let item = buffer.next().unwrap();
+                        missing_paths.push(WorkItem::MissingValue(item));
+                    }
+                    self.work_queue.extend(missing_paths);
+                }
+                self.work_queue.push_back(WorkItem::Value(value, path));
+            }
+
+            if self.value_iter.peek().is_none() {
+                // Add all remaining missing paths to queue
+                self.work_queue.push_back(WorkItem::NoMoreWork);
+            }
+
+            break;
         }
-        // The current control flow either returns a terminal column value or ends up in an
-        // explicit/implicit continuation of the depth-first value iterator. This makes it quite
-        // hard to handle missing paths at a value node level before resuming value traversal.
-        //
-        // There are the following cases to handle:
-        //     - Iterate depth-first over value to return a column value on reaching the terminal
-        // node in the path
-        //     - If there are missing paths at a level, they need to processed after all present
-        // properties at that level has been processed. Only then do we process the next value
-        // in the iterator.
-        //     - The value iterator is exhausted, and we process all the remaining paths.
-        //
-        // The traversal logic has to be decoupled from the processing fields logic for this code
-        // to be easier to maintain. I considered implementing this as state machine transitions,
-        // which could make this easier to understand. The control flow remains the same, and we
-        // encode explicit state transitions at each step. The traversal and processing remains
-        // tightly coupled.
-        //
-        // Instead, a queue can be added to the `ValueParserState`, and the work items will be
-        // processed based on their priority. The highest priority is processing missing paths
-        // for a level. And normal priority for processing a value. So enqueue missing path work
-        // items once we have processed all the present fields in a level. The level transition,
-        // specifically the backtracking to sibling or parent can be detected for enqueuing
-        // missing paths.
-        //
-        // Implementation Sketch,
-        // loop {
-        //     1_handle_work_queue_item
-        //         VisitValue => {
-        //            // Handle backtracking
-        //            // Save previous path to state
-        //            // Match value by type
-        //            //   Scalar types return a value immediately
-        //            //   Empty list return a value immediately
-        //            //   But if empty list type is a struct then we queue missing paths instead
-        //            //   Otherwise for a non-empty list add to stack and continue
-        //            //   For struct add to stack and continue
-        //         }
-        //         HandleMissingPath => { ... }
-        //
-        //     // work queue is empty so get the next value from iterator
-        //     2_get_next_value_from_iterator
-        //         if is_sibling_transition || backtracking_transition {
-        //             queue_missing_paths
-        //         }
-        //         queue_value_visitor
-        //
-        //    // value iterator is exhausted so queue remaining missing paths
-        //     3_queue_remaining_missing_paths
-        //         while !struct_fields_stack.empty {
-        //             pop_struct_fields_frame
-        //             queue_missing_paths
-        //         }
-        // }
-        //
-        // // TODO: Handle missing required fields when depth-first value iterator is exhausted
-        // while let Some((value, path)) = self.value_iter.next() {
-        //     // At the top-level since the path is empty, it is not possible to search for the field by
-        //     // name. So we extract the struct properties, and all the field definitions in the context
-        //     // stack, and perform a shallow structural type-checking.
-        //     if path.is_root() {
-        //         let props = match value {
-        //             Value::Struct(props) => props.to_vec(),
-        //             _ => return Some(Err(ParseError::UnexpectedTopLevelValue { value })),
-        //         };
-        //         let fields = match self.state.peek_struct() {
-        //             None => return Some(Err(ParseError::FieldsNotFound { value })),
-        //             Some(ctx) => ctx.fields.to_vec(),
-        //         };
-        //         match Value::type_check_struct_shallow(&props, &fields) {
-        //             Ok(_) => {
-        //                 let missing_paths = find_missing_paths(&path, &props, &fields, &self.paths);
-        //                 self.state.missing_path_frames = DequeStack::from(missing_paths);
-        //                 continue;
-        //             }
-        //             Err(_) => {
-        //                 return Some(Err(ParseError::TypeCheckFailed {
-        //                     prop_names: props.iter().map(|(name, _)| name.clone()).collect(),
-        //                     fields: fields.iter().cloned().collect(),
-        //                 }))
-        //             }
-        //         }
-        //     }
-        //
-        //     self.state.handle_backtracking(&path);
-        //     let saved_prev_path = self.state.prev_path.clone();
-        //     self.state.prev_path = path.clone();
-        //
-        //     println!("-----------");
-        //     println!("{:#?} -> {:#?}", saved_prev_path.format(), path.format());
-        //     println!("value: {:?}", value);
-        //     println!(
-        //         "active frame [struct]: {:?}",
-        //         self.state.struct_stack.last().unwrap()
-        //     );
-        //     if self.state.struct_stack.len() >= 2 {
-        //         println!(
-        //             "parent frame [struct]: {:?}",
-        //             self.state.struct_stack.iter().rev().nth(1).unwrap()
-        //         );
-        //     }
-        //     println!("active frame [list]: {:?}", self.state.list_stack.last());
-        //     if self.state.list_stack.len() >= 2 {
-        //         println!(
-        //             "parent frame [list]: {:?}",
-        //             self.state.list_stack.iter().rev().nth(1).unwrap()
-        //         );
-        //     }
-        //     println!(
-        //         "active frame [level]: {:?}",
-        //         self.state.computed_levels.last()
-        //     );
-        //     if self.state.computed_levels.len() >= 2 {
-        //         println!(
-        //             "parent frame [level]: {:?}",
-        //             self.state.computed_levels.iter().rev().nth(1).unwrap()
-        //         );
-        //     }
-        //     if !self.state.missing_path_frames.is_empty() {
-        //         println!("missing_path_frames: {:?}", self.state.missing_path_frames);
-        //     }
-        //
-        //     let field = match path
-        //         .last()
-        //         .ok_or(ParseError::PathIsEmpty {
-        //             value: value.clone(),
-        //         })
-        //         .and_then(|field_name| {
-        //             self.state
-        //                 .find_field(field_name)
-        //                 .ok_or(ParseError::UnknownField {
-        //                     field_name: field_name.clone(),
-        //                     value: value.clone(),
-        //                 })
-        //         }) {
-        //         Ok(f) => f.clone(),
-        //         Err(err) => {
-        //             println!("Failed to find field {}", err);
-        //             return Some(Err(err));
-        //         }
-        //     };
-        //
-        //     match value.type_check_shallow(&field, &path) {
-        //         Ok(_) => {
-        //             if let Some(parent_level_ctx) = self.state.computed_levels.last() {
-        //                 self.state
-        //                     .computed_levels
-        //                     .push(parent_level_ctx.with_field(&field, &path))
-        //             } else {
-        //                 println!("Failed to find parent level ctx");
-        //                 return Some(Err(ParseError::MissingLevelContext { path: path.clone() }));
-        //             }
-        //
-        //             match value {
-        //                 Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
-        //                     let column_value = self.get_column_from_scalar(&path, &value);
-        //                     println!("Column-striped value: {:?}", column_value);
-        //                     return Some(column_value);
-        //                 }
-        //                 Value::List(items) if items.is_empty() => {
-        //                     println!("Processing an empty list");
-        //                     /// There are two possible states here:
-        //                     ///  - scalar type list item (single column)
-        //                     ///  - struct list item (one or more columns)
-        //                     ///
-        //                     /// TODO: handle struct list item (returning one or more columns)
-        //                     match field.data_type() {
-        //                         DataType::List(inner) => match inner.as_ref() {
-        //                             DataType::Boolean | DataType::Integer | DataType::String => {
-        //                                 let null_value =
-        //                                     Value::create_null_or_empty(inner.as_ref());
-        //                                 let column_value =
-        //                                     self.get_column_from_scalar(&path, &null_value);
-        //                                 println!("Column-striped value: {:?}", column_value);
-        //                                 return Some(column_value);
-        //                             }
-        //                             DataType::List(_) => {
-        //                                 unreachable!("empty list: nested list types not allowed")
-        //                             }
-        //                             DataType::Struct(_) => {
-        //                                 println!("Null buffering for empty struct in list not implemented");
-        //                                 todo!("handle null buffering for struct fields")
-        //                             }
-        //                         },
-        //                         _ => unreachable!("expected list value to a have list datatype"),
-        //                     }
-        //                 }
-        //                 Value::List(items) => {
-        //                     println!("Adding a new frame to list stack");
-        //                     self.state.push_list(&field, items.len(), &path);
-        //                     continue;
-        //                 }
-        //                 Value::Struct(_) => {
-        //                     println!("Adding a new frame to struct stack");
-        //                     match field.data_type() {
-        //                         DataType::Boolean
-        //                         | DataType::Integer
-        //                         | DataType::String
-        //                         | DataType::List(_) => {
-        //                             unreachable!("expected struct {}", field)
-        //                         }
-        //                         DataType::Struct(fields) => self
-        //                             .state
-        //                             .struct_stack
-        //                             .push(StructContext::new(fields.to_vec(), path.clone())),
-        //                     }
-        //                     continue;
-        //                 }
-        //             }
-        //         }
-        //         Err(type_check_err) => match field.data_type() {
-        //             DataType::List(_) => {
-        //                 println!("Type check err: {:?}", type_check_err);
-        //                 println!("Now processing a list item");
-        //                 let list_context = match self.state.list_stack.last_mut() {
-        //                     None => {
-        //                         return Some(Err(ParseError::MissingListContext {
-        //                             path: path.clone(),
-        //                         }))
-        //                     }
-        //                     Some(ctx) => ctx,
-        //                 };
-        //
-        //                 let level_context = match self.state.computed_levels.last() {
-        //                     None => {
-        //                         return Some(Err(ParseError::MissingLevelContext {
-        //                             path: path.clone(),
-        //                         }))
-        //                     }
-        //                     Some(ctx) => ctx,
-        //                 };
-        //
-        //                 // Extract repetition, definition levels before we advance the cursor to
-        //                 // the next position in this list context.
-        //                 let (repetition_level, definition_level) = if list_context.position() > 0 {
-        //                     (
-        //                         level_context.repetition_depth,
-        //                         level_context.definition_level,
-        //                     )
-        //                 } else {
-        //                     (
-        //                         level_context.repetition_level,
-        //                         level_context.definition_level,
-        //                     )
-        //                 };
-        //                 list_context.increment();
-        //                 println!("list index position incremented: {:?}", list_context);
-        //
-        //                 // List context mismatch with current list
-        //                 if field.name() != list_context.field_name() {
-        //                     println!("Error: field name does not match the list field name");
-        //                     return Some(Err(ParseError::MissingListContext {
-        //                         path: path.clone(),
-        //                     }));
-        //                 }
-        //
-        //                 match field.data_type() {
-        //                     DataType::List(item_type) => match (value, item_type.as_ref()) {
-        //                         (Value::Boolean(_), DataType::Boolean)
-        //                         | (Value::Integer(_), DataType::Integer)
-        //                         | (Value::String(_), DataType::String) => {
-        //                             let column_value = self.get_column_from_scalar_list(
-        //                                 &path,
-        //                                 &field,
-        //                                 value,
-        //                                 repetition_level,
-        //                                 definition_level,
-        //                             );
-        //                             println!("Column-striped value: {:?}", column_value);
-        //                             return Some(column_value);
-        //                         }
-        //                         (Value::Struct(props), DataType::Struct(fields)) => {
-        //                             if props.is_empty() {
-        //                                 let missing_paths =
-        //                                     find_missing_paths(&path, props, fields, &self.paths);
-        //                                 println!("Oops! This struct value is empty! Need to handle all missing paths here! {:#?}", missing_paths);
-        //                             }
-        //                             println!("Add a new frame to struct stack");
-        //                             self.state
-        //                                 .struct_stack
-        //                                 .push(StructContext::new(fields.to_vec(), path.clone()));
-        //                         }
-        //                         _ => todo!("value type does not match data type"),
-        //                     },
-        //                     _ => unreachable!("expected a list item"),
-        //                 }
-        //             }
-        //             _ => return Some(Err(ParseError::from(type_check_err))),
-        //         },
-        //     }
-        // }
-        //
-        // // Handle missing fields at struct top-level
-        // if let Some(missing_path) = self.state.missing_path_frames.next() {
-        //     println!("Processing missing_path: {:?}", missing_path);
-        //     // Required to correctly setup stack contexts
-        //     self.state.handle_backtracking(missing_path.path());
-        //     self.state.prev_path = PathVector::from(missing_path.path());
-        //
-        //     let data_type = missing_path.field().data_type();
-        //     match data_type {
-        //         DataType::Boolean | DataType::Integer | DataType::String => {
-        //             Some(self.get_column_from_scalar(
-        //                 &PathVector::from_slice(missing_path.path()),
-        //                 &Value::create_null_or_empty(data_type),
-        //             ))
-        //         }
-        //         DataType::List(inner) => match inner.as_ref() {
-        //             DataType::Boolean | DataType::Integer | DataType::String => {
-        //                 Some(self.get_column_from_scalar(
-        //                     &PathVector::from_slice(missing_path.path()),
-        //                     &Value::create_null_or_empty(inner.as_ref()),
-        //                 ))
-        //             }
-        //             DataType::List(_) => {
-        //                 unreachable!("not allowed")
-        //             }
-        //             DataType::Struct(_) => {
-        //                 unreachable!("leaf field cannot have a struct as list item")
-        //             }
-        //         },
-        //         DataType::Struct(_) => {
-        //             unreachable!("leaf field cannot be a struct value")
-        //         }
-        //     }
-        // } else {
-        //     None
-        // }
+        None
     }
 }
 
