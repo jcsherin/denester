@@ -320,6 +320,7 @@ impl StructContext {
 enum WorkItem<'a> {
     Value(&'a Value, PathVector),
     MissingValue(PathMetadata),
+    NoMoreWork,
 }
 
 #[derive(Default)]
