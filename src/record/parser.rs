@@ -363,6 +363,20 @@ impl ValueParserState {
         self.peek_struct().and_then(|ctx| ctx.find_field(name))
     }
 
+    /// Handles proper state maintenance during depth-first value traversal
+    ///
+    /// During depth-first traversal if the path transitions horizontally to a sibling or upwards
+    /// to an ancestor, multiple stacks for tracking various states needs to be updated. The order
+    /// is important - the previous path is updated only after stack maintenance.
+    ///
+    /// Both the actions of stack maintenance and saving the previous path to state are tightly
+    /// coupled and this interface encapsulates the complexity of the underlying state maintenance
+    /// mechanism.
+    fn handle_level_transition(&mut self, to_path: PathVectorSlice) {
+        self.handle_backtracking(to_path);
+        self.prev_path = PathVector::from(to_path);
+    }
+
     /// Stack maintenance during backtracking in depth-first traversal
     fn handle_backtracking(&mut self, curr_path: PathVectorSlice) {
         // Traversal without backtracking. Proceed only if the path transitions to either a sibling
@@ -437,9 +451,8 @@ impl<'a> ValueParser<'a> {
     //     }
     // }
 
-    fn process_missing_path(&mut self, missing_path: &PathMetadata) -> StripedColumnResult {
-        self.state.handle_backtracking(missing_path.path());
-        self.state.prev_path = PathVector::from(missing_path.path());
+    fn handle_missing_path(&mut self, missing_path: &PathMetadata) -> StripedColumnResult {
+        self.state.handle_level_transition(missing_path.path());
 
         let data_type = missing_path.field().data_type();
         match data_type {
