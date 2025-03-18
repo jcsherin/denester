@@ -619,8 +619,16 @@ impl<'a> Iterator for ValueParser<'a> {
     /// to the work queue.
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if let Some(task) = self.work_queue.iter().next() {
-                // Value is processed here
+            if let Some(work_item) = self.work_queue.iter().next() {
+                match work_item {
+                    WorkItem::Value(_, _) => {
+                        unimplemented!("handles value")
+                    }
+                    WorkItem::MissingValue(_) => {
+                        unimplemented!("handles missing")
+                    }
+                    WorkItem::NoMoreWork => return None,
+                }
             }
 
             if let Some((value, path)) = self.value_iter.next() {
