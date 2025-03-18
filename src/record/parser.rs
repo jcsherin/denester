@@ -645,28 +645,28 @@ impl<'a> Iterator for ValueParser<'a> {
             }
 
             if let Some((value, path)) = self.value_iter.next() {
-                /// Checks if path transitions to a sibling or an ancestor, and not to a child.
-                ///
-                /// The following path transitions are downwards:
-                ///     * Root to child (prev: ., curr: "a")
-                ///     * Downward to child (prev: "a.b", curr: "a.b.c")
-                ///
-                /// The following path transitions are either horizontal or upwards:
-                ///     * Sibling transitions (prev: "a.b", curr: "a.c")
-                ///     * Ancestor transitions (prev: "a.b.c", curr: "a")
-                ///     * Branch changes (prev: "a.b", curr: "c.d")
-                ///
-                /// There are paths which are defined in the schema but missing in the value. These
-                /// missing paths are buffered so that a NULL value can be output for each missing
-                /// path later.
-                ///
-                /// When transitioning to either a sibling (horizontal) or to an ancestor (upwards)
-                /// the missing paths which share a prefix with the previous path are to be
-                /// processed before the next value.
-                ///
-                /// If the previous path is "a.b" and the next value is in the path "c.d" and the
-                /// following missing paths are buffered: "a.b.x.y", "a.b.z". This ensures that
-                /// the order in which they are added to work queue is: "a.b.x.y", "a.b.z", "c.d".
+                // Checks if path transitions to a sibling or an ancestor, and not to a child.
+                //
+                // The following path transitions are downwards:
+                //     * Root to child (prev: ., curr: "a")
+                //     * Downward to child (prev: "a.b", curr: "a.b.c")
+                //
+                // The following path transitions are either horizontal or upwards:
+                //     * Sibling transitions (prev: "a.b", curr: "a.c")
+                //     * Ancestor transitions (prev: "a.b.c", curr: "a")
+                //     * Branch changes (prev: "a.b", curr: "c.d")
+                //
+                // There are paths which are defined in the schema but missing in the value. These
+                // missing paths are buffered so that a NULL value can be output for each missing
+                // path later.
+                //
+                // When transitioning to either a sibling (horizontal) or to an ancestor (upwards)
+                // the missing paths which share a prefix with the previous path are to be
+                // processed before the next value.
+                //
+                // If the previous path is "a.b" and the next value is in the path "c.d" and the
+                // following missing paths are buffered: "a.b.x.y", "a.b.z". This ensures that
+                // the order in which they are added to work queue is: "a.b.x.y", "a.b.z", "c.d".
                 if !path.starts_with(&self.state.prev_path) {
                     let mut buffer = self.state.missing_paths_buffer.by_ref().peekable();
                     let mut missing_paths = vec![];
@@ -683,16 +683,16 @@ impl<'a> Iterator for ValueParser<'a> {
                 }
                 self.work_queue.push_back(WorkItem::Value(value, path));
             } else {
-                /// Once the value iterator is exhausted all remaining missing paths which were
-                /// buffered earlier is added to the work queue for processing.
+                // Once the value iterator is exhausted all remaining missing paths which were
+                // buffered earlier is added to the work queue for processing.
                 if !self.state.missing_paths_buffer.is_empty() {
                     let remaining = std::mem::take(&mut self.state.missing_paths_buffer);
                     self.work_queue
                         .extend(remaining.map(|missing| WorkItem::MissingValue(missing)));
                 }
 
-                /// Sentinel to signal the end. The value iterator is exhausted. All remaining
-                /// missing paths have been processed.
+                // Sentinel to signal the end. The value iterator is exhausted. All remaining
+                // missing paths have been processed.
                 self.work_queue.push_back(WorkItem::NoMoreWork);
             }
 
