@@ -661,12 +661,14 @@ impl<'a> Iterator for ValueParser<'a> {
                     self.work_queue.extend(missing_paths);
                 }
                 self.work_queue.push_back(WorkItem::Value(value, path));
-            } else if !self.state.missing_paths_buffer.is_empty() {
+            } else {
                 /// Once the value iterator is exhausted all remaining missing paths which were
                 /// buffered earlier is added to the work queue for processing.
-                let remaining = std::mem::take(&mut self.state.missing_paths_buffer);
-                self.work_queue
-                    .extend(remaining.map(|missing| WorkItem::MissingValue(missing)));
+                if !self.state.missing_paths_buffer.is_empty() {
+                    let remaining = std::mem::take(&mut self.state.missing_paths_buffer);
+                    self.work_queue
+                        .extend(remaining.map(|missing| WorkItem::MissingValue(missing)));
+                }
 
                 /// Sentinel to signal the end. The value iterator is exhausted. All remaining
                 /// missing paths have been processed.
