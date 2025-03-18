@@ -425,7 +425,7 @@ impl<'a> ValueParser<'a> {
         let paths = PathMetadataIterator::new(schema).collect::<Vec<_>>();
         let state = ValueParserState::new(schema);
 
-        let mut value_iter = value_iter.peekable();
+        let value_iter = value_iter.peekable();
         let work_queue = VecDeque::new();
 
         Self {
