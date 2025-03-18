@@ -6,7 +6,6 @@ mod value;
 
 pub use field::{DataType, Field};
 pub use schema::{Schema, SchemaBuilder};
-use std::path::Path;
 pub use value::Value;
 
 // TODO: Convert `PathVector` to newtype instead of a type alias

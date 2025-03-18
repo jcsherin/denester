@@ -3,7 +3,6 @@ use crate::record::parser::ParseError::RequiredFieldIsNull;
 use crate::record::value::{DepthFirstValueIterator, TypeCheckError};
 use crate::record::{DataType, Field, PathVector, PathVectorExt, PathVectorSlice, Schema, Value};
 use std::collections::{HashSet, VecDeque};
-use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
 use std::ops::Deref;
