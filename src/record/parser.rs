@@ -451,7 +451,7 @@ impl<'a> ValueParser<'a> {
     //     }
     // }
 
-    fn handle_missing_path(&mut self, missing_path: &PathMetadata) -> StripedColumnResult {
+    fn handle_missing_path(&mut self, missing_path: &PathMetadata) -> StripedColumnResult<'a> {
         self.state.handle_level_transition(missing_path.path());
 
         let data_type = missing_path.field().data_type();
@@ -632,13 +632,14 @@ impl<'a> Iterator for ValueParser<'a> {
     /// to the work queue.
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if let Some(work_item) = self.work_queue.iter().next() {
+            if !self.work_queue.is_empty() {
+                let work_item = self.work_queue.pop_front().unwrap();
                 match work_item {
                     WorkItem::Value(_, _) => {
                         unimplemented!("handles value")
                     }
-                    WorkItem::MissingValue(_) => {
-                        unimplemented!("handles missing")
+                    WorkItem::MissingValue(missing) => {
+                        return Some(self.handle_missing_path(&missing))
                     }
                     WorkItem::NoMoreWork => return None,
                 }
