@@ -362,24 +362,32 @@ impl ValueParserState {
         self.peek_struct().and_then(|ctx| ctx.find_field(name))
     }
 
-    /// Handles proper state maintenance during depth-first value traversal
+    /// Manages state during tree traversal level transitions.
     ///
-    /// During depth-first traversal if the path transitions horizontally to a sibling or upwards
-    /// to an ancestor, multiple stacks for tracking various states needs to be updated. The order
-    /// is important - the previous path is updated only after stack maintenance.
-    ///
-    /// Both the actions of stack maintenance and saving the previous path to state are tightly
-    /// coupled and this interface encapsulates the complexity of the underlying state maintenance
-    /// mechanism.
-    fn handle_level_transition(&mut self, to_path: PathVectorSlice) {
-        self.handle_backtracking(to_path);
-        self.prev_path = PathVector::from(to_path);
+    /// When a level transition is detected, this method prunes the internal stacks. A level
+    /// transition occurs when the traversal path changes direction from going downwards to either
+    /// sideways or upwards in the value tree.
+    fn transition_to(&mut self, curr_path: PathVectorSlice) {
+        self.prune_stacks(curr_path);
+
+        // Saves the current path for the next traversal step. Each call to this method requires the
+        // previous path to properly identify level transitions.
+        self.prev_path = PathVector::from(curr_path);
     }
 
-    /// Stack maintenance during backtracking in depth-first traversal
-    fn handle_backtracking(&mut self, curr_path: PathVectorSlice) {
-        // Traversal without backtracking. Proceed only if the path transitions to either a sibling
-        // or ancestor.
+    /// Removes stack frames when the traversal backtracks to ancestors or siblings.
+    ///
+    /// This method is not meant to be used directly. Instead, see [`transition_to`].
+    ///
+    /// This operation ensures consistency across multiple internal tracking states:
+    ///     - schema validation stack: field definitions for the node we are currently visiting
+    ///     - levels stack: computed definition, repetition and depth values
+    ///     - list iterator stack: tracks position of repeated item during traversal
+    ///
+    /// After pruning, the top of all the stacks will align with the currently visited node.
+    fn prune_stacks(&mut self, curr_path: PathVectorSlice) {
+        // Skip pruning if we are going deeper into the tree (not backtracking). A level transition
+        // occurs only when moving to either siblings or ancestors.
         if curr_path.len() > self.prev_path.len() {
             return;
         }
@@ -409,13 +417,7 @@ impl ValueParserState {
         // TODO: add `depth` method to PathVector
         let curr_depth = curr_path.len();
         while !self.list_stack.is_empty() && self.list_stack.last().unwrap().depth > curr_depth {
-            let popped = self.list_stack.pop();
-            println!(
-                "backtracking: popped list context at depth {}: {:#?}. current depth: {}",
-                popped.as_ref().unwrap().depth,
-                popped.as_ref().unwrap(),
-                curr_depth,
-            );
+            self.list_stack.pop().unwrap();
         }
     }
 }
@@ -450,8 +452,12 @@ impl<'a> ValueParser<'a> {
     //     }
     // }
 
-    fn handle_missing_path(&mut self, missing_path: &PathMetadata) -> StripedColumnResult<'a> {
-        self.state.handle_level_transition(missing_path.path());
+    /// Creates NULL column values for fields present in schema but missing from input data.
+    fn create_null_column_for_missing_path(
+        &mut self,
+        missing_path: &PathMetadata,
+    ) -> StripedColumnResult<'a> {
+        self.state.transition_to(missing_path.path());
 
         let data_type = missing_path.field().data_type();
         match data_type {
@@ -638,7 +644,7 @@ impl<'a> Iterator for ValueParser<'a> {
                         unimplemented!("handles value")
                     }
                     WorkItem::MissingValue(missing) => {
-                        return Some(self.handle_missing_path(&missing))
+                        return Some(self.create_null_column_for_missing_path(&missing))
                     }
                     WorkItem::NoMoreWork => return None,
                 }
