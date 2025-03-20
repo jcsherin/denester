@@ -43,8 +43,15 @@ pub enum ParseError<'a> {
         path: Vec<String>,
     },
     FieldNameLookupInRoot,
-    FieldNameLookupMissingContext { field_name: String, path: Vec<String> },
-    FieldNameLookupFailed { field_name: String, path: Vec<String>, ctx: StructContext },
+    FieldNameLookupMissingContext {
+        field_name: String,
+        path: Vec<String>,
+    },
+    FieldNameLookupFailed {
+        field_name: String,
+        path: Vec<String>,
+        ctx: StructContext,
+    },
 }
 
 impl<'a> From<TypeCheckError> for ParseError<'a> {
@@ -125,12 +132,26 @@ impl<'a> Display for ParseError<'a> {
             ParseError::UnknownField { field_name, value } => {
                 write!(f, "Unknown field name \"{}\": {}", field_name, value)
             }
-            ParseError::FieldNameLookupInRoot => { write!(f, "Cannot lookup field by name at root") }
-            ParseError::FieldNameLookupMissingContext { field_name, path } => {
-                write!(f, "Context missing for lookup of field name: {} in path: {:#?}", field_name, path)
+            ParseError::FieldNameLookupInRoot => {
+                write!(f, "Cannot lookup field by name at root")
             }
-            ParseError::FieldNameLookupFailed { field_name, path, ctx } => {
-                write!(f, "Field name: {} in path: {:#?} not found in context: {:#?}", field_name, path, ctx)
+            ParseError::FieldNameLookupMissingContext { field_name, path } => {
+                write!(
+                    f,
+                    "Context missing for lookup of field name: {} in path: {:#?}",
+                    field_name, path
+                )
+            }
+            ParseError::FieldNameLookupFailed {
+                field_name,
+                path,
+                ctx,
+            } => {
+                write!(
+                    f,
+                    "Field name: {} in path: {:#?} not found in context: {:#?}",
+                    field_name, path, ctx
+                )
             }
         }
     }
