@@ -42,6 +42,9 @@ pub enum ParseError<'a> {
     MissingStructContext {
         path: Vec<String>,
     },
+    FieldNameLookupInRoot,
+    FieldNameLookupMissingContext { field_name: String, path: Vec<String> },
+    FieldNameLookupFailed { field_name: String, path: Vec<String>, ctx: StructContext },
 }
 
 impl<'a> From<TypeCheckError> for ParseError<'a> {
@@ -72,7 +75,7 @@ impl<'a> From<TypeCheckError> for ParseError<'a> {
 impl<'a> Display for ParseError<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParseError::RequiredFieldIsNull { field_path } => {
+            RequiredFieldIsNull { field_path } => {
                 write!(f, "Required field is null: {}", field_path)
             }
             ParseError::UnexpectedTopLevelValue { value } => {
@@ -121,6 +124,13 @@ impl<'a> Display for ParseError<'a> {
 
             ParseError::UnknownField { field_name, value } => {
                 write!(f, "Unknown field name \"{}\": {}", field_name, value)
+            }
+            ParseError::FieldNameLookupInRoot => { write!(f, "Cannot lookup field by name at root") }
+            ParseError::FieldNameLookupMissingContext { field_name, path } => {
+                write!(f, "Context missing for lookup of field name: {} in path: {:#?}", field_name, path)
+            }
+            ParseError::FieldNameLookupFailed { field_name, path, ctx } => {
+                write!(f, "Field name: {} in path: {:#?} not found in context: {:#?}", field_name, path, ctx)
             }
         }
     }
@@ -288,7 +298,7 @@ impl<T> Iterator for DequeStack<T> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct StructContext {
     fields: Vec<Field>,
     path: PathVector,
@@ -354,13 +364,14 @@ impl ValueParserState {
             .push(ListContext::new(field.name().to_string(), len, path.len()));
     }
 
+    /// TODO: better naming for this method, and also the field member
     pub fn peek_struct(&self) -> Option<&StructContext> {
         self.struct_stack.last()
     }
 
-    fn find_field(&self, name: &str) -> Option<&Field> {
-        self.peek_struct().and_then(|ctx| ctx.find_field(name))
-    }
+    // fn find_field(&self, name: &str) -> Option<&Field> {
+    //     self.peek_struct().and_then(|ctx| ctx.find_field(name))
+    // }
 
     /// Manages state during tree traversal level transitions.
     ///
@@ -436,6 +447,30 @@ impl<'a> ValueParser<'a> {
             value_iter,
             state,
             work_queue,
+        }
+    }
+
+    /// Lookup a field by resolving path using the field definitions context
+    fn get_field_by_path(&self, path: &PathVector) -> Result<&Field, ParseError<'a>> {
+        if path.is_root() {
+            return Err(ParseError::FieldNameLookupInRoot);
+        }
+
+        let field_name = path.last().unwrap();
+        match self.state.peek_struct() {
+            None => {
+                Err(ParseError::FieldNameLookupMissingContext { field_name: field_name.to_string(), path: path.clone() })
+            }
+            Some(ctx) => {
+                match ctx.find_field(field_name) {
+                    None => {
+                        Err(ParseError::FieldNameLookupFailed { field_name: field_name.to_string(), path: path.clone(), ctx: ctx.clone() })
+                    }
+                    Some(field) => {
+                        Ok(field)
+                    }
+                }
+            }
         }
     }
 
