@@ -773,7 +773,17 @@ impl<'a> Iterator for ValueParser<'a> {
                                     return Some(Err(err));
                                 }
 
-                                todo!("process intern/leaf value node")
+                                match value {
+                                    Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
+                                        return Some(self.get_column_from_scalar(&path, &value))
+                                    }
+                                    Value::List(_) => {
+                                        todo!("process list value")
+                                    }
+                                    Value::Struct(_) => {
+                                        todo!("process struct value")
+                                    }
+                                }
                             }
                             Err(_) => {
                                 todo!("process type check error for internal/leaf value node")
