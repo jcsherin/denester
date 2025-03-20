@@ -52,6 +52,8 @@ pub enum ParseError<'a> {
         path: Vec<String>,
         ctx: StructContext,
     },
+    RootIsNotStruct,
+    MissingFieldsContext,
 }
 
 impl<'a> From<TypeCheckError> for ParseError<'a> {
@@ -152,6 +154,12 @@ impl<'a> Display for ParseError<'a> {
                     "Field name: {} in path: {:#?} not found in context: {:#?}",
                     field_name, path, ctx
                 )
+            }
+            ParseError::RootIsNotStruct => {
+                write!(f, "Root is not a struct type value")
+            }
+            ParseError::MissingFieldsContext => {
+                write!(f, "Root field definitions are missing in context")
             }
         }
     }
@@ -495,6 +503,27 @@ impl<'a> ValueParser<'a> {
             })
     }
 
+    fn type_check_struct_shallow<'b>(
+        &'b self,
+        value: &'b Value,
+    ) -> Result<(&'b Vec<(String, Value)>, &'b Vec<Field>), ParseError<'a>> {
+        let props = if let Value::Struct(props) = value {
+            props
+        } else {
+            return Err(ParseError::RootIsNotStruct);
+        };
+
+        let fields = match self.state.peek_struct() {
+            None => return Err(ParseError::MissingFieldsContext),
+            Some(ctx) => &ctx.fields,
+        };
+
+        match Value::type_check_struct_shallow(props, fields) {
+            Ok(()) => Ok((props, fields)),
+            Err(err) => Err(err.into()),
+        }
+    }
+
     /// Queue missing paths for current struct level
     // fn queue_missing_paths(&mut self) {
     //     if let Some(struct_fields_frame) = self.state.peek_struct() {
@@ -696,8 +725,25 @@ impl<'a> Iterator for ValueParser<'a> {
             if !self.work_queue.is_empty() {
                 let work_item = self.work_queue.pop_front().unwrap();
                 match work_item {
-                    WorkItem::Value(_, _) => {
-                        unimplemented!("handles value")
+                    WorkItem::Value(value, path) if path.is_root() => {
+                        match self.type_check_struct_shallow(value) {
+                            Ok((props, fields)) => {
+                                let missing_paths = find_missing_paths(
+                                    &PathVector::root(),
+                                    props,
+                                    fields,
+                                    &self.paths,
+                                );
+                                self.state.missing_paths_buffer = DequeStack::from(missing_paths);
+                                continue;
+                            }
+                            Err(err) => {
+                                return Some(Err(err));
+                            }
+                        }
+                    }
+                    WorkItem::Value(value, path) => {
+                        todo!("process internal/leaf value node")
                     }
                     WorkItem::MissingValue(missing) => {
                         return Some(self.create_null_column_for_missing_path(&missing))
