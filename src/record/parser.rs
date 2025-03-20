@@ -22,9 +22,6 @@ pub enum ParseError<'a> {
         prop_names: Vec<String>,
         fields: Vec<Field>,
     },
-    MissingLevelContext {
-        path: PathVector,
-    },
     MissingListContext {
         path: PathVector,
     },
@@ -54,6 +51,9 @@ pub enum ParseError<'a> {
     },
     RootIsNotStruct,
     MissingFieldsContext,
+    MissingLevelContext {
+        path: PathVector,
+    },
 }
 
 impl<'a> From<TypeCheckError> for ParseError<'a> {
@@ -524,6 +524,29 @@ impl<'a> ValueParser<'a> {
         Ok((props, fields))
     }
 
+    /// Computes level metadata from field definition and updates the computed levels stack
+    ///
+    /// This method is called when visiting internal value nodes. It updates the level stack which
+    /// tracks the definition, repetition levels from root to leaf node. At the leaf node the most
+    /// recent stack entry is used to construct a column value with the correct definition and
+    /// repetition levels.
+    fn push_derived_level_context(
+        &mut self,
+        field: &Field,
+        path: &PathVector,
+    ) -> Result<(), ParseError<'a>> {
+        let parent_ctx = self
+            .state
+            .computed_levels
+            .last()
+            .ok_or_else(|| ParseError::MissingLevelContext { path: path.clone() })?;
+
+        let new_ctx = parent_ctx.with_field(&field, &path);
+        self.state.computed_levels.push(new_ctx);
+
+        Ok(())
+    }
+
     /// Queue missing paths for current struct level
     // fn queue_missing_paths(&mut self) {
     //     if let Some(struct_fields_frame) = self.state.peek_struct() {
@@ -738,7 +761,24 @@ impl<'a> Iterator for ValueParser<'a> {
                         continue;
                     }
                     WorkItem::Value(value, path) => {
-                        todo!("process internal/leaf value node")
+                        self.state.transition_to(&path);
+
+                        let field = match self.get_field_by_path(&path) {
+                            Ok(field) => field.clone(),
+                            Err(err) => return Some(Err(err)),
+                        };
+                        match value.type_check_shallow(&field, &path) {
+                            Ok(()) => {
+                                if let Err(err) = self.push_derived_level_context(&field, &path) {
+                                    return Some(Err(err));
+                                }
+
+                                todo!("process intern/leaf value node")
+                            }
+                            Err(_) => {
+                                todo!("process type check error for internal/leaf value node")
+                            }
+                        }
                     }
                     WorkItem::MissingValue(missing) => {
                         return Some(self.create_null_column_for_missing_path(&missing))
