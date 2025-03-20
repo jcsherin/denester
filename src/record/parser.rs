@@ -507,21 +507,21 @@ impl<'a> ValueParser<'a> {
         &'b self,
         value: &'b Value,
     ) -> Result<(&'b Vec<(String, Value)>, &'b Vec<Field>), ParseError<'a>> {
-        let props = if let Value::Struct(props) = value {
-            props
-        } else {
-            return Err(ParseError::RootIsNotStruct);
+        let props = match value {
+            Value::Struct(props) => props,
+            Value::Boolean(_) | Value::Integer(_) | Value::String(_) | Value::List(_) => {
+                return Err(ParseError::RootIsNotStruct)
+            }
         };
+        let fields = &self
+            .state
+            .peek_struct()
+            .ok_or(ParseError::MissingFieldsContext)?
+            .fields;
 
-        let fields = match self.state.peek_struct() {
-            None => return Err(ParseError::MissingFieldsContext),
-            Some(ctx) => &ctx.fields,
-        };
+        Value::type_check_struct_shallow(props, fields)?;
 
-        match Value::type_check_struct_shallow(props, fields) {
-            Ok(()) => Ok((props, fields)),
-            Err(err) => Err(err.into()),
-        }
+        Ok((props, fields))
     }
 
     /// Queue missing paths for current struct level
