@@ -726,21 +726,16 @@ impl<'a> Iterator for ValueParser<'a> {
                 let work_item = self.work_queue.pop_front().unwrap();
                 match work_item {
                     WorkItem::Value(value, path) if path.is_root() => {
-                        match self.type_check_struct_shallow(value) {
-                            Ok((props, fields)) => {
-                                let missing_paths = find_missing_paths(
-                                    &PathVector::root(),
-                                    props,
-                                    fields,
-                                    &self.paths,
-                                );
-                                self.state.missing_paths_buffer = DequeStack::from(missing_paths);
-                                continue;
-                            }
-                            Err(err) => {
-                                return Some(Err(err));
-                            }
-                        }
+                        let (props, fields) = match self.type_check_struct_shallow(value) {
+                            Ok(result) => result,
+                            Err(err) => return Some(Err(err)),
+                        };
+
+                        let missing_paths =
+                            find_missing_paths(&PathVector::root(), props, fields, &self.paths);
+                        self.state.missing_paths_buffer = DequeStack::from(missing_paths);
+
+                        continue;
                     }
                     WorkItem::Value(value, path) => {
                         todo!("process internal/leaf value node")
