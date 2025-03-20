@@ -478,21 +478,21 @@ impl<'a> ValueParser<'a> {
         }
 
         let field_name = path.last().unwrap();
-        match self.state.peek_struct() {
-            None => {
-                Err(ParseError::FieldNameLookupMissingContext { field_name: field_name.to_string(), path: path.clone() })
-            }
-            Some(ctx) => {
-                match ctx.find_field(field_name) {
-                    None => {
-                        Err(ParseError::FieldNameLookupFailed { field_name: field_name.to_string(), path: path.clone(), ctx: ctx.clone() })
-                    }
-                    Some(field) => {
-                        Ok(field)
-                    }
-                }
-            }
-        }
+
+        self.state
+            .peek_struct()
+            .ok_or_else(|| ParseError::FieldNameLookupMissingContext {
+                field_name: field_name.to_string(),
+                path: path.clone(),
+            })
+            .and_then(|ctx| {
+                ctx.find_field(field_name)
+                    .ok_or_else(|| ParseError::FieldNameLookupFailed {
+                        field_name: field_name.to_string(),
+                        path: path.clone(),
+                        ctx: ctx.clone(),
+                    })
+            })
     }
 
     /// Queue missing paths for current struct level
