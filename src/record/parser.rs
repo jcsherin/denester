@@ -757,8 +757,6 @@ impl<'a> Iterator for ValueParser<'a> {
                         let missing_paths =
                             find_missing_paths(&PathVector::root(), props, fields, &self.paths);
                         self.state.missing_paths_buffer = DequeStack::from(missing_paths);
-
-                        continue;
                     }
                     WorkItem::Value(value, path) => {
                         self.state.transition_to(&path);
@@ -848,10 +846,7 @@ impl<'a> Iterator for ValueParser<'a> {
                 // missing paths have been processed.
                 self.work_queue.push_back(WorkItem::NoMoreWork);
             }
-
-            break;
         }
-        None
     }
 }
 
