@@ -393,10 +393,6 @@ impl ValueParserState {
         self.struct_stack.last()
     }
 
-    // fn find_field(&self, name: &str) -> Option<&Field> {
-    //     self.peek_struct().and_then(|ctx| ctx.find_field(name))
-    // }
-
     /// Manages state during tree traversal level transitions.
     ///
     /// When a level transition is detected, this method prunes the internal stacks. A level
