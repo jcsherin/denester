@@ -388,11 +388,6 @@ impl ValueParserState {
         }
     }
 
-    pub fn push_list(&mut self, field: &Field, len: usize, path: &PathVector) {
-        self.list_stack
-            .push(ListContext::new(field.name().to_string(), len, path.len()));
-    }
-
     /// TODO: better naming for this method, and also the field member
     pub fn peek_struct(&self) -> Option<&StructContext> {
         self.struct_stack.last()
@@ -545,6 +540,19 @@ impl<'a> ValueParser<'a> {
         self.state.computed_levels.push(new_ctx);
 
         Ok(())
+    }
+
+    /// Adds a frame to stack for tracking a list element position during depth-first traversal
+    ///
+    /// Knowing the index of a list element during traversal is necessary to correctly compute the
+    /// repetition levels for repeated items.
+    ///
+    /// In a nested value there maybe multiple nested list values in a path. The stack makes it
+    /// trivial to track the list element index during depth-first traversal at any nesting level.
+    fn push_list_iterator_context(&mut self, field: &Field, path: &PathVector, size: usize) {
+        self.state
+            .list_stack
+            .push(ListContext::new(field.name().to_string(), size, path.len()));
     }
 
     /// Queue missing paths for current struct level
@@ -775,8 +783,11 @@ impl<'a> Iterator for ValueParser<'a> {
                                     Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
                                         return Some(self.get_column_from_scalar(&path, &value))
                                     }
-                                    Value::List(_) => {
-                                        todo!("process list value")
+                                    Value::List(items) if items.is_empty() => {
+                                        todo!("process empty list ")
+                                    }
+                                    Value::List(items) => {
+                                        self.push_list_iterator_context(&field, &path, items.len());
                                     }
                                     Value::Struct(_) => {
                                         todo!("process struct value")
