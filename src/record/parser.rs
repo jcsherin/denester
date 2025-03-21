@@ -551,18 +551,60 @@ impl<'a> ValueParser<'a> {
             .push(ListContext::new(field.name().to_string(), size, path.len()));
     }
 
-    /// Queue missing paths for current struct level
-    // fn queue_missing_paths(&mut self) {
-    //     if let Some(struct_fields_frame) = self.state.peek_struct() {
-    //         if let Some((Value::Struct(props), path)) = self.value_iter.peek() {
-    //             self.missing_paths_queue.extend(
-    //                 find_missing_paths(path, props, struct_fields_frame.fields(), &self.paths)
-    //                     .iter()
-    //                     .map(|path_metadata| WorkItem::MissingValue(path_metadata.clone())),
-    //             )
-    //         }
-    //     }
-    // }
+    /// Adds a frame to stack with field definitions for type-checking children
+    ///
+    /// A struct value is sequence of key-value pairs. The struct datatype contains the field
+    /// definitions required to type-check the struct value. The key in the struct value is used
+    /// to lookup the corresponding field definition during value traversal.
+    ///
+    /// This context also allows us to identify which optional/repeated fields are missing in the
+    /// value and buffer them for generating NULL column values after the present fields are
+    /// processed during traversal.
+    fn push_fields_context(&mut self, field: &Field, path: &PathVector) {
+        let fields = self.get_struct_fields(&field).to_vec();
+
+        self.state
+            .struct_stack
+            .push(StructContext::new(fields, path.clone()));
+    }
+
+    /// Identifies missing optional/repeated fields for NULL output generation
+    ///
+    /// When optional/repeated fields are missing in a value during column-striping we need to
+    /// generate a NULL value output.
+    ///
+    /// This works alongside the depth-first traversal to ensure proper interleaving of present
+    /// values and NULL output for missing values.
+    fn buffer_missing_paths(
+        &mut self,
+        field: &Field,
+        path_prefix: &PathVector,
+        props: &Vec<(String, Value)>,
+    ) {
+        let fields = self.get_struct_fields(field);
+        let missing_paths = MissingFields::with_struct(&props, &fields)
+            .iter()
+            .flat_map(|field_name| {
+                let path = path_prefix.append_name(field_name.to_string());
+                self.paths
+                    .iter()
+                    .filter(move |path_metadata| path_metadata.path().starts_with(&path))
+                    .cloned()
+            })
+            .collect();
+
+        self.state.missing_paths_buffer.push_frame(missing_paths);
+    }
+
+    /// Extracts field definitions from a struct fields datatype
+    fn get_struct_fields<'b>(&self, field: &'b Field) -> &'b [Field] {
+        match field.data_type() {
+            DataType::Boolean | DataType::Integer | DataType::String | DataType::List(_) => {
+                panic!("expected struct datatype with field definitions")
+            }
+            DataType::Struct(fields) => fields,
+        }
+    }
 
     /// Creates NULL column values for fields present in schema but missing from input data.
     fn create_null_column_for_missing_path(
@@ -785,8 +827,9 @@ impl<'a> Iterator for ValueParser<'a> {
                                     Value::List(items) => {
                                         self.push_list_iterator_context(&field, &path, items.len());
                                     }
-                                    Value::Struct(_) => {
-                                        todo!("process struct value")
+                                    Value::Struct(props) => {
+                                        self.push_fields_context(&field, &path);
+                                        self.buffer_missing_paths(&field, &path, props);
                                     }
                                 }
                             }
