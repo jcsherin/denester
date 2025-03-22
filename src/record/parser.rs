@@ -558,7 +558,7 @@ impl<'a> ValueParser<'a> {
         &mut self,
         fields: &[Field],
         path_prefix: &PathVector,
-        props: &Vec<(String, Value)>,
+        props: &[(String, Value)],
     ) {
         let missing_paths = MissingFields::with_struct(&props, &fields)
             .iter()
@@ -707,7 +707,7 @@ impl MissingFields {
     /// struct values, all required fields are present. And for an empty struct value, the struct
     /// definition has no required fields or type-checking would have failed because a required
     /// field is missing.
-    fn with_struct(props: &Vec<(String, Value)>, fields: &[Field]) -> Self {
+    fn with_struct(props: &[(String, Value)], fields: &[Field]) -> Self {
         let field_names = if !props.is_empty() {
             let present_fields = props
                 .iter()
@@ -841,8 +841,12 @@ impl<'a> Iterator for ValueParser<'a> {
                                                     DataType::List(_) => {
                                                         unreachable!("nested list type is illegal")
                                                     }
-                                                    DataType::Struct(_) => {
-                                                        todo!("handle missing paths now because this list is empty")
+                                                    DataType::Struct(fields) => {
+                                                        self.buffer_missing_paths(
+                                                            fields,
+                                                            &path,
+                                                            &[],
+                                                        );
                                                     }
                                                 }
                                             }
