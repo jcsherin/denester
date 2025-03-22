@@ -809,7 +809,34 @@ impl<'a> Iterator for ValueParser<'a> {
                                         return Some(self.get_column_from_scalar(&path, &value))
                                     }
                                     Value::List(items) if items.is_empty() => {
-                                        todo!("process empty list ")
+                                        match field.data_type() {
+                                            DataType::Boolean
+                                            | DataType::Integer
+                                            | DataType::String
+                                            | DataType::Struct(_) => {
+                                                unreachable!("Found Value::List but field's data type is not DataType::List")
+                                            }
+                                            DataType::List(item_data_type) => {
+                                                match item_data_type.as_ref() {
+                                                    DataType::Boolean
+                                                    | DataType::Integer
+                                                    | DataType::String => {
+                                                        return Some(self.get_column_from_scalar(
+                                                            &path,
+                                                            &Value::create_null_or_empty(
+                                                                item_data_type.as_ref(),
+                                                            ),
+                                                        ))
+                                                    }
+                                                    DataType::List(_) => {
+                                                        unreachable!("nested list type is illegal")
+                                                    }
+                                                    DataType::Struct(_) => {
+                                                        todo!("handle missing paths now because this list is empty")
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                     Value::List(items) => {
                                         self.push_list_iterator_context(&field, &path, items.len());
