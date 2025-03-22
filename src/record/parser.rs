@@ -494,27 +494,6 @@ impl<'a> ValueParser<'a> {
             })
     }
 
-    fn type_check_struct_shallow<'b>(
-        &'b self,
-        value: &'b Value,
-    ) -> Result<(&'b Vec<(String, Value)>, &'b Vec<Field>), ParseError<'a>> {
-        let props = match value {
-            Value::Struct(props) => props,
-            Value::Boolean(_) | Value::Integer(_) | Value::String(_) | Value::List(_) => {
-                return Err(ParseError::RootIsNotStruct)
-            }
-        };
-        let fields = &self
-            .state
-            .peek_struct()
-            .ok_or(ParseError::MissingFieldsContext)?
-            .fields;
-
-        Value::type_check_struct_shallow(props, fields)?;
-
-        Ok((props, fields))
-    }
-
     /// Computes level metadata from field definition and updates the computed levels stack
     ///
     /// This method is called when visiting internal value nodes. It updates the level stack which
@@ -577,11 +556,10 @@ impl<'a> ValueParser<'a> {
     /// values and NULL output for missing values.
     fn buffer_missing_paths(
         &mut self,
-        field: &Field,
+        fields: &[Field],
         path_prefix: &PathVector,
         props: &Vec<(String, Value)>,
     ) {
-        let fields = self.get_struct_fields(field);
         let missing_paths = MissingFields::with_struct(&props, &fields)
             .iter()
             .flat_map(|field_name| {
@@ -795,14 +773,23 @@ impl<'a> Iterator for ValueParser<'a> {
                 let work_item = self.work_queue.pop_front().unwrap();
                 match work_item {
                     WorkItem::Value(value, path) if path.is_root() => {
-                        let (props, fields) = match self.type_check_struct_shallow(value) {
-                            Ok(result) => result,
-                            Err(err) => return Some(Err(err)),
+                        let props = match value {
+                            Value::Struct(props) => props,
+                            Value::Boolean(_)
+                            | Value::Integer(_)
+                            | Value::String(_)
+                            | Value::List(_) => return Some(Err(ParseError::RootIsNotStruct)),
+                        };
+                        let fields = match &self.state.peek_struct() {
+                            None => return Some(Err(ParseError::MissingFieldsContext)),
+                            Some(ctx) => &ctx.fields,
                         };
 
-                        let missing_paths =
-                            find_missing_paths(&PathVector::root(), props, fields, &self.paths);
-                        self.state.missing_paths_buffer = DequeStack::from(missing_paths);
+                        if let Err(err) = Value::type_check_struct_shallow(props, fields) {
+                            return Some(Err(err.into()));
+                        }
+
+                        self.buffer_missing_paths(&fields.to_vec(), &path, props);
                     }
                     WorkItem::Value(value, path) => {
                         self.state.transition_to(&path);
@@ -829,7 +816,9 @@ impl<'a> Iterator for ValueParser<'a> {
                                     }
                                     Value::Struct(props) => {
                                         self.push_fields_context(&field, &path);
-                                        self.buffer_missing_paths(&field, &path, props);
+
+                                        let fields = self.get_struct_fields(&field);
+                                        self.buffer_missing_paths(fields, &path, props);
                                     }
                                 }
                             }
