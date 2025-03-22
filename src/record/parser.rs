@@ -702,21 +702,31 @@ struct MissingFields(Vec<FieldName>);
 impl MissingFields {
     /// Returns missing fields of a struct value
     ///
-    /// Only optional and repeated fields are collected. If a required field is missing then the struct
-    /// value has failed type checking.
+    /// This method collects all the optional/repeated fields which are missing in the struct value.
+    /// But it assumes that type-checking has been performed, which guarantees that for non-empty
+    /// struct values, all required fields are present. And for an empty struct value, the struct
+    /// definition has no required fields or type-checking would have failed because a required
+    /// field is missing.
     fn with_struct(props: &Vec<(String, Value)>, fields: &[Field]) -> Self {
-        let present_fields = props
-            .iter()
-            .map(|(name, _)| name.as_str())
-            .collect::<HashSet<_>>();
+        let field_names = if !props.is_empty() {
+            let present_fields = props
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<HashSet<_>>();
 
-        let missing_fields = fields
-            .iter()
-            .filter(|f| !present_fields.contains(f.name()) && !f.is_required())
-            .map(|f| FieldName::from(f.name().to_string()))
-            .collect();
+            fields
+                .iter()
+                .filter(|f| !present_fields.contains(f.name()))
+                .map(|f| FieldName::from(f.name().to_string()))
+                .collect()
+        } else {
+            fields
+                .iter()
+                .map(|f| FieldName::from(f.name().to_string()))
+                .collect()
+        };
 
-        Self(missing_fields)
+        Self(field_names)
     }
 }
 
