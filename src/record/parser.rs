@@ -863,8 +863,23 @@ impl<'a> Iterator for ValueParser<'a> {
                                     }
                                 }
                             }
-                            Err(_) => {
-                                todo!("process type check error for internal/leaf value node")
+                            Err(type_check_error) => {
+                                if !matches!(field.data_type(), DataType::List(_)) {
+                                    return Some(Err(ParseError::from(type_check_error)));
+                                }
+
+                                // Shallow type-checking intentionally skips list element type
+                                // verification to keep the process simple.
+                                //
+                                // The list element failed earlier shallow type-checking because
+                                // it is scalar value or struct value. But the field data type is
+                                // `DataType::List(_)`. To be certain that the list element type
+                                // matches, we need to compare the inner element type defined in
+                                // `DataType::List(element_type)`.
+                                //
+                                // If verification fails we return a parse error. Otherwise, we
+                                // proceed with column-striping the list element.
+                                todo!("type-check and process list element")
                             }
                         }
                     }
