@@ -574,13 +574,22 @@ impl<'a> ValueParser<'a> {
         self.state.missing_paths_buffer.push_frame(missing_paths);
     }
 
-    /// Extracts field definitions from a struct fields datatype
+    /// Extracts field definitions from a struct datatype or from a list of structs.
     fn get_struct_fields<'b>(&self, field: &'b Field) -> &'b [Field] {
         match field.data_type() {
-            DataType::Boolean | DataType::Integer | DataType::String | DataType::List(_) => {
+            DataType::Struct(fields) => fields,
+            DataType::List(element_type) => match element_type.as_ref() {
+                DataType::Boolean | DataType::Integer | DataType::String => {
+                    panic!("expected list element type to be a struct datatype")
+                }
+                DataType::List(_) => {
+                    unreachable!("nested list is illegal")
+                }
+                DataType::Struct(fields) => fields,
+            },
+            DataType::Boolean | DataType::Integer | DataType::String => {
                 panic!("expected struct datatype with field definitions")
             }
-            DataType::Struct(fields) => fields,
         }
     }
 
@@ -854,6 +863,15 @@ impl<'a> Iterator for ValueParser<'a> {
                                     }
                                     Value::List(items) => {
                                         self.push_list_iterator_context(&field, &path, items.len());
+
+                                        // For list of structs, the struct fields context is added
+                                        // here once at the list level. This defines the schema for
+                                        // all the list elements.
+                                        //
+                                        // The missing paths buffering needs to be handled when we
+                                        // process a struct element in this list. Here we only
+                                        // set up the schema context for the list elements.
+                                        self.push_fields_context(&field, &path);
                                     }
                                     Value::Struct(props) => {
                                         self.push_fields_context(&field, &path);
