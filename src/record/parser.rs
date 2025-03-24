@@ -665,6 +665,14 @@ impl<'a> ValueParser<'a> {
             definition_level,
         ))
     }
+
+    /// Checks if supplied field matches the list iterator context
+    fn is_matching_list_iterator_context(&self, field: &Field) -> bool {
+        match self.state.list_stack.last() {
+            None => false,
+            Some(ctx) => ctx.field_name() == field.name(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -897,6 +905,23 @@ impl<'a> Iterator for ValueParser<'a> {
                                 //
                                 // If verification fails we return a parse error. Otherwise, we
                                 // proceed with column-striping the list element.
+                                match field.data_type() {
+                                    DataType::Boolean
+                                    | DataType::Integer
+                                    | DataType::String
+                                    | DataType::Struct(_) => {
+                                        unreachable!("expected a list data type")
+                                    }
+                                    DataType::List(_) => {
+                                        if !self.is_matching_list_iterator_context(&field) {
+                                            return Some(Err(ParseError::MissingListContext {
+                                                path: path.clone(),
+                                            }));
+                                        }
+
+                                    }
+                                }
+
                                 todo!("type-check and process list element")
                             }
                         }
