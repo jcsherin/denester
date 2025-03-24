@@ -256,7 +256,7 @@ impl ListContext {
         self.current_index
     }
 
-    pub fn increment(&mut self) {
+    pub fn advance(&mut self) {
         self.current_index += 1;
     }
 
@@ -673,6 +673,52 @@ impl<'a> ValueParser<'a> {
             Some(ctx) => ctx.field_name() == field.name(),
         }
     }
+
+    /// Computes repetition, definition level from state for a list element
+    ///
+    /// The repetition level of a list element is dependent on its index. To be able to reassemble
+    /// the column-striped record back, the first element has a different derivation of repetition
+    /// level than other items.
+    ///
+    /// The definition level of a list item is independent of its index.
+    fn get_repetition_and_definition_level(
+        &self,
+        path: &PathVector,
+    ) -> Result<(RepetitionLevel, DefinitionLevel), ParseError<'a>> {
+        let list_context = match self.state.list_stack.last() {
+            None => return Err(ParseError::MissingListContext { path: path.clone() }),
+            Some(ctx) => ctx,
+        };
+
+        let level_context = match self.state.computed_levels.last() {
+            None => return Err(ParseError::MissingLevelContext { path: path.clone() }),
+            Some(ctx) => ctx,
+        };
+
+        if list_context.position() > 0 {
+            Ok((
+                level_context.repetition_depth,
+                level_context.definition_level,
+            ))
+        } else {
+            Ok((
+                level_context.repetition_level,
+                level_context.definition_level,
+            ))
+        }
+    }
+
+    /// Advances the list iterator position by one
+    fn advance_list_iterator(&mut self, path: &PathVector) -> Result<(), ParseError<'a>> {
+        let ctx = match self.state.list_stack.last_mut() {
+            None => return Err(ParseError::MissingListContext { path: path.clone() }),
+            Some(ctx) => ctx,
+        };
+
+        ctx.advance();
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -919,10 +965,20 @@ impl<'a> Iterator for ValueParser<'a> {
                                             }));
                                         }
 
+                                        let (rep, def) =
+                                            match self.get_repetition_and_definition_level(&path) {
+                                                Ok((r, d)) => (r, d),
+                                                Err(err) => return Some(Err(err)),
+                                            };
+
+                                        match self.advance_list_iterator(&path) {
+                                            Ok(_) => {}
+                                            Err(err) => return Some(Err(err)),
+                                        }
+
+                                        todo!("process list element")
                                     }
                                 }
-
-                                todo!("type-check and process list element")
                             }
                         }
                     }
