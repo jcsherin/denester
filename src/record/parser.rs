@@ -965,16 +965,24 @@ impl<'a> Iterator for ValueParser<'a> {
                                             }));
                                         }
 
+                                        // The index position is crucial to computing the repetition
+                                        // level of a list element.
+                                        //
+                                        // We must therefore advance the iterator after getting the
+                                        // level info, but before processing the element. This ensures
+                                        // that the next element will find the iterator in the right
+                                        // state when retrieving level info.
                                         let (rep, def) =
                                             match self.get_repetition_and_definition_level(&path) {
-                                                Ok((r, d)) => (r, d),
+                                                Ok((r, d)) => {
+                                                    match self.advance_list_iterator(&path) {
+                                                        Ok(_) => {}
+                                                        Err(err) => return Some(Err(err)),
+                                                    }
+                                                    (r, d)
+                                                }
                                                 Err(err) => return Some(Err(err)),
                                             };
-
-                                        match self.advance_list_iterator(&path) {
-                                            Ok(_) => {}
-                                            Err(err) => return Some(Err(err)),
-                                        }
 
                                         todo!("process list element")
                                     }
