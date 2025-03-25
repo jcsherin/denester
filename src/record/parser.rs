@@ -1045,11 +1045,41 @@ impl<'a> Iterator for ValueParser<'a> {
                 // If the previous path is "a.b" and the next value is in the path "c.d" and the
                 // following missing paths are buffered: "a.b.x.y", "a.b.z". This ensures that
                 // the order in which they are added to work queue is: "a.b.x.y", "a.b.z", "c.d".
-                if !path.starts_with(&self.state.prev_path) {
+                //
+                // Missing paths are not handled in the following cases:
+                // When path depth is equal to previous path then is a sibling transition.
+                // When path depth is greater than previous path then it is descending the tree.
+                //
+                // Missing paths are processed when backtracking to an ancestor. At that point we
+                // need to queue all the missing paths originating from the previous branch that
+                // are pending.
+                //
+                // Example 1: `a.b.c` -> `a.x`.
+                // The depth of current path is 2. So the prefix of depth 2 of the previous path is
+                // `a.b`. Now examine missing paths which belong to the `a.b` branch. They need to
+                // be processed before we process `a.x`.
+                //
+                // Example 2: `a.b.c` -> `x`
+                // The depth of current path is 1. So the prefix of depth 1 of the previous path is
+                // `a`. Now examine missing paths which belong to the `a` branch. They need to be
+                // processed before we process `x`.
+                //
+                // Example 3: `a` -> `x` (`b`, `c` are missing)
+                // This is a sibling transition, so we have to wait until all fields present in the
+                // value whose parent is root to be processed. Only then do we process the missing
+                // paths `b` and `c`.
+                //
+                // Example 4: `a` -> `a.b`
+                // Here as there is no backtracking transition, we do not have to process any
+                // missing paths.
+                if path.depth() < self.state.prev_path.depth() {
+                    let prefix_path = self.state.prev_path.prefix(path.depth());
                     let mut missing_paths = vec![];
 
                     while let Some(missing) = self.state.missing_paths_buffer.peek() {
-                        if !missing.path().starts_with(&self.state.prev_path) {
+                        // Stop because there are no more missing paths which shares the same prefix
+                        // as the branch from which transitioned.
+                        if !missing.path().starts_with(&prefix_path) {
                             break;
                         }
 
@@ -1059,6 +1089,7 @@ impl<'a> Iterator for ValueParser<'a> {
 
                     self.work_queue.extend(missing_paths);
                 }
+
                 self.work_queue.push_back(WorkItem::Value(value, path));
             } else {
                 // Once the value iterator is exhausted all remaining missing paths which were

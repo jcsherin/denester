@@ -18,6 +18,8 @@ trait PathVectorExt {
     fn append_name(&self, name: String) -> PathVector;
     fn from_slice(slice: PathVectorSlice) -> Self;
     fn root() -> Self;
+    fn depth(&self) -> usize;
+    fn prefix(&self, len: usize) -> PathVector;
 }
 
 impl PathVectorExt for PathVector {
@@ -28,7 +30,6 @@ impl PathVectorExt for PathVector {
             self.join(".")
         }
     }
-
     fn is_root(&self) -> bool {
         self.is_empty()
     }
@@ -44,6 +45,14 @@ impl PathVectorExt for PathVector {
 
     fn root() -> Self {
         Self::default()
+    }
+
+    fn depth(&self) -> usize {
+        self.len()
+    }
+
+    fn prefix(&self, len: usize) -> PathVector {
+        self.iter().take(len).cloned().collect()
     }
 }
 
