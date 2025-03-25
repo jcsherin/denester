@@ -940,6 +940,31 @@ impl<'a> Iterator for ValueParser<'a> {
                                     return Some(Err(ParseError::from(type_check_error)));
                                 }
 
+                                if !self.is_matching_list_iterator_context(&field) {
+                                    return Some(Err(ParseError::MissingListContext {
+                                        path: path.clone(),
+                                    }));
+                                }
+
+                                // The index position is crucial to computing the repetition
+                                // level of a list element.
+                                //
+                                // We must therefore advance the iterator after getting the
+                                // level info, but before processing the element. This ensures
+                                // that the next element will find the iterator in the right
+                                // state when retrieving level info.
+                                let (rep, def) =
+                                    match self.get_repetition_and_definition_level(&path) {
+                                        Ok((r, d)) => {
+                                            match self.advance_list_iterator(&path) {
+                                                Ok(_) => {}
+                                                Err(err) => return Some(Err(err)),
+                                            }
+                                            (r, d)
+                                        }
+                                        Err(err) => return Some(Err(err)),
+                                    };
+
                                 // Shallow type-checking intentionally skips list element type
                                 // verification to keep the process simple.
                                 //
@@ -958,33 +983,20 @@ impl<'a> Iterator for ValueParser<'a> {
                                     | DataType::Struct(_) => {
                                         unreachable!("expected a list data type")
                                     }
-                                    DataType::List(_) => {
-                                        if !self.is_matching_list_iterator_context(&field) {
-                                            return Some(Err(ParseError::MissingListContext {
-                                                path: path.clone(),
-                                            }));
+                                    DataType::List(element_type) => {
+                                        match (element_type.as_ref(), value) {
+                                            (DataType::Boolean, Value::Boolean(_))
+                                            | (DataType::Integer, Value::Integer(_))
+                                            | (DataType::String, Value::String(_)) => {
+                                                return Some(self.get_column_from_scalar_list(
+                                                    &path, &field, value, rep, def,
+                                                ))
+                                            }
+                                            (DataType::Struct(_), Value::Struct(_)) => {
+                                                todo!("handle struct value")
+                                            }
+                                            _ => todo!("parse error: list element type mismatch"),
                                         }
-
-                                        // The index position is crucial to computing the repetition
-                                        // level of a list element.
-                                        //
-                                        // We must therefore advance the iterator after getting the
-                                        // level info, but before processing the element. This ensures
-                                        // that the next element will find the iterator in the right
-                                        // state when retrieving level info.
-                                        let (rep, def) =
-                                            match self.get_repetition_and_definition_level(&path) {
-                                                Ok((r, d)) => {
-                                                    match self.advance_list_iterator(&path) {
-                                                        Ok(_) => {}
-                                                        Err(err) => return Some(Err(err)),
-                                                    }
-                                                    (r, d)
-                                                }
-                                                Err(err) => return Some(Err(err)),
-                                            };
-
-                                        todo!("process list element")
                                     }
                                 }
                             }
