@@ -925,7 +925,11 @@ impl<'a> Iterator for ValueParser<'a> {
                                         // The missing paths buffering needs to be handled when we
                                         // process a struct element in this list. Here we only
                                         // set up the schema context for the list elements.
-                                        self.push_fields_context(&field, &path);
+                                        if let DataType::List(element_type) = field.data_type() {
+                                            if let DataType::Struct(_) = element_type.as_ref() {
+                                                self.push_fields_context(&field, &path)
+                                            }
+                                        }
                                     }
                                     Value::Struct(props) => {
                                         self.push_fields_context(&field, &path);
