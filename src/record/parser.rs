@@ -286,6 +286,15 @@ impl<T> DequeStack<T> {
     fn is_empty(&self) -> bool {
         self.stack.is_empty()
     }
+
+    /// Peek at next item without consuming it
+    fn peek(&self) -> Option<&T> {
+        self.stack
+            .iter()
+            .rev()
+            .find(|frame| !frame.is_empty())
+            .and_then(|frame| frame.front())
+    }
 }
 
 impl<T> Default for DequeStack<T> {
@@ -1037,17 +1046,17 @@ impl<'a> Iterator for ValueParser<'a> {
                 // following missing paths are buffered: "a.b.x.y", "a.b.z". This ensures that
                 // the order in which they are added to work queue is: "a.b.x.y", "a.b.z", "c.d".
                 if !path.starts_with(&self.state.prev_path) {
-                    let mut buffer = self.state.missing_paths_buffer.by_ref().peekable();
                     let mut missing_paths = vec![];
 
-                    while let Some(missing) = buffer.peek() {
+                    while let Some(missing) = self.state.missing_paths_buffer.peek() {
                         if !missing.path().starts_with(&self.state.prev_path) {
                             break;
                         }
 
-                        let item = buffer.next().unwrap();
+                        let item = self.state.missing_paths_buffer.next().unwrap();
                         missing_paths.push(WorkItem::MissingValue(item));
                     }
+
                     self.work_queue.extend(missing_paths);
                 }
                 self.work_queue.push_back(WorkItem::Value(value, path));
