@@ -1,5 +1,5 @@
 use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
-use crate::record::parser::ParseError::RequiredFieldIsNull;
+use crate::record::parser::ParseError::{RequiredFieldIsNull, RequiredFieldsAreMissing};
 use crate::record::value::{DepthFirstValueIterator, TypeCheckError};
 use crate::record::{DataType, Field, PathVector, PathVectorExt, PathVectorSlice, Schema, Value};
 use std::collections::{HashSet, VecDeque};
@@ -54,6 +54,10 @@ pub enum ParseError<'a> {
     MissingLevelContext {
         path: PathVector,
     },
+    RequiredFieldsAreMissing {
+        missing: Vec<String>,
+        path: PathVector,
+    },
 }
 
 impl<'a> From<TypeCheckError> for ParseError<'a> {
@@ -65,8 +69,8 @@ impl<'a> From<TypeCheckError> for ParseError<'a> {
             TypeCheckError::RequiredFieldIsNull { path, field } => RequiredFieldIsNull {
                 field_path: FieldPath::new(field, path.to_vec()),
             },
-            TypeCheckError::RequiredFieldsAreMissing { .. } => {
-                todo!()
+            TypeCheckError::RequiredFieldsAreMissing { missing, path } => {
+                RequiredFieldsAreMissing { missing, path }
             }
             TypeCheckError::StructSchemaMismatch { .. } => {
                 todo!()
@@ -160,6 +164,14 @@ impl<'a> Display for ParseError<'a> {
             }
             ParseError::MissingFieldsContext => {
                 write!(f, "Root field definitions are missing in context")
+            }
+            RequiredFieldsAreMissing { missing, path } => {
+                write!(
+                    f,
+                    "Required fields missing: {} in path: {}",
+                    missing.join(", "),
+                    path.format()
+                )
             }
         }
     }
@@ -867,7 +879,7 @@ impl<'a> Iterator for ValueParser<'a> {
                             Some(ctx) => &ctx.fields,
                         };
 
-                        if let Err(err) = Value::type_check_struct_shallow(props, fields) {
+                        if let Err(err) = Value::type_check_struct_shallow(&path, props, fields) {
                             return Some(Err(err.into()));
                         }
 
@@ -1463,9 +1475,9 @@ mod tests {
         let value = ValueBuilder::new().build();
         let mut parser = ValueParser::new(&schema, value.iter_depth_first());
 
-        // assert!(matches!(parser.next().unwrap(),
-        //         Err(ParseError::RequiredFieldIsMissing { field_path })
-        //         if field_path.path() == &["x"] && field_path.field() == &integer("x")),);
+        assert!(matches!(parser.next().unwrap(),
+                Err(RequiredFieldsAreMissing { missing, path })
+                if path.is_root() && missing.len() == 1 && missing[0] == String::from("x")));
         assert!(parser.next().is_none());
     }
 

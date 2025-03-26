@@ -194,7 +194,7 @@ impl Value {
             }
             (Value::List(_), DataType::List(_)) => Ok(()),
             (Value::Struct(props), DataType::Struct(fields)) => {
-                Self::type_check_struct_shallow(props, fields)
+                Self::type_check_struct_shallow(path, props, fields)
             }
             _ => Err(TypeCheckError::DataTypeMismatch {
                 value: self.clone(),
@@ -224,6 +224,7 @@ impl Value {
     /// - Names in values must exist in field definitions.
     /// - Order of values can differ from field definitions.
     pub fn type_check_struct_shallow(
+        path: &PathVector,
         props: &Vec<(String, Value)>,
         fields: &Vec<Field>,
     ) -> Result<(), TypeCheckError> {
@@ -278,8 +279,7 @@ impl Value {
                 .collect::<Vec<_>>();
             Err(TypeCheckError::RequiredFieldsAreMissing {
                 missing,
-                props: props.clone(),
-                fields: fields.clone(),
+                path: path.clone(),
             })
         } else {
             Ok(())
@@ -299,8 +299,7 @@ pub enum TypeCheckError {
     },
     RequiredFieldsAreMissing {
         missing: Vec<String>,
-        props: Vec<(String, Value)>,
-        fields: Vec<Field>,
+        path: PathVector,
     },
     StructSchemaMismatch {
         props: Vec<(String, Value)>,
