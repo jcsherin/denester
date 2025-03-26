@@ -58,6 +58,9 @@ pub enum ParseError<'a> {
         missing: Vec<String>,
         path: PathVector,
     },
+    ListTypeMismatch {
+        path: Vec<String>,
+    },
 }
 
 impl<'a> From<TypeCheckError> for ParseError<'a> {
@@ -165,11 +168,18 @@ impl<'a> Display for ParseError<'a> {
             ParseError::MissingFieldsContext => {
                 write!(f, "Root field definitions are missing in context")
             }
-            RequiredFieldsAreMissing { missing, path } => {
+            ParseError::RequiredFieldsAreMissing { missing, path } => {
                 write!(
                     f,
                     "Required fields missing: {} in path: {}",
                     missing.join(", "),
+                    path.format()
+                )
+            }
+            ParseError::ListTypeMismatch { path } => {
+                write!(
+                    f,
+                    "Type checking failed for list element: {}",
                     path.format()
                 )
             }
@@ -1020,7 +1030,11 @@ impl<'a> Iterator for ValueParser<'a> {
                                             (DataType::Struct(_), Value::Struct(_)) => {
                                                 todo!("handle struct value")
                                             }
-                                            _ => todo!("parse error: list element type mismatch"),
+                                            _ => {
+                                                return Some(Err(ParseError::ListTypeMismatch {
+                                                    path: path.clone(),
+                                                }))
+                                            }
                                         }
                                     }
                                 }
