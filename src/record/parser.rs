@@ -948,19 +948,6 @@ impl<'a> Iterator for ValueParser<'a> {
                                     }
                                     Value::List(items) => {
                                         self.push_list_iterator_context(&field, &path, items.len());
-
-                                        // For list of structs, the struct fields context is added
-                                        // here once at the list level. This defines the schema for
-                                        // all the list elements.
-                                        //
-                                        // The missing paths buffering needs to be handled when we
-                                        // process a struct element in this list. Here we only
-                                        // set up the schema context for the list elements.
-                                        if let DataType::List(element_type) = field.data_type() {
-                                            if let DataType::Struct(_) = element_type.as_ref() {
-                                                self.push_fields_context(&field, &path)
-                                            }
-                                        }
                                     }
                                     Value::Struct(props) => {
                                         self.push_fields_context(&field, &path);
@@ -1027,8 +1014,9 @@ impl<'a> Iterator for ValueParser<'a> {
                                                     &path, &field, value, rep, def,
                                                 ))
                                             }
-                                            (DataType::Struct(_), Value::Struct(_)) => {
-                                                todo!("handle struct value")
+                                            (DataType::Struct(fields), Value::Struct(props)) => {
+                                                self.push_fields_context(&field, &path);
+                                                self.buffer_missing_paths(fields, &path, props);
                                             }
                                             _ => {
                                                 return Some(Err(ParseError::ListTypeMismatch {
