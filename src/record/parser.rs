@@ -591,18 +591,9 @@ impl<'a> ValueParser<'a> {
         path_prefix: &PathVector,
         props: &[(String, Value)],
     ) {
-        let missing_paths = MissingFields::with_struct(&props, &fields)
-            .iter()
-            .flat_map(|field_name| {
-                let path = path_prefix.append_name(field_name.to_string());
-                self.paths
-                    .iter()
-                    .filter(move |path_metadata| path_metadata.path().starts_with(&path))
-                    .cloned()
-            })
-            .collect();
-
-        self.state.missing_paths_buffer.push_frame(missing_paths);
+        self.state
+            .missing_paths_buffer
+            .push_frame(find_missing_paths(path_prefix, props, fields, &self.paths));
     }
 
     /// Extracts field definitions from a struct datatype or from a list of structs.
@@ -833,7 +824,7 @@ impl Deref for MissingFields {
 
 fn find_missing_paths(
     prefix: &PathVector,
-    props: &Vec<(String, Value)>,
+    props: &[(String, Value)],
     fields: &[Field],
     paths: &Vec<PathMetadata>,
 ) -> Vec<PathMetadata> {
@@ -1016,7 +1007,34 @@ impl<'a> Iterator for ValueParser<'a> {
                                             }
                                             (DataType::Struct(fields), Value::Struct(props)) => {
                                                 self.push_fields_context(&field, &path);
-                                                self.buffer_missing_paths(fields, &path, props);
+
+                                                // If props is empty, add the missing paths directly to the work queue
+                                                // bypassing the buffer.
+                                                //
+                                                // The work queue will be empty after processing this value because we
+                                                // only add values incrementally. This gives us the opportunity to insert
+                                                // these high-priority tasks at the front of the queue to be processed next.
+                                                //
+                                                // When a struct is empty, it means the path terminates at this point while
+                                                // the schema defines a subtree that should exist. We need to generate NULL
+                                                // column values for all the missing paths before processing siblings or
+                                                // ancestors in the value tree.
+                                                if props.is_empty() {
+                                                    let missing_paths = find_missing_paths(
+                                                        &path,
+                                                        props,
+                                                        fields,
+                                                        &self.paths,
+                                                    )
+                                                    .into_iter()
+                                                    .map(|meta| WorkItem::MissingValue(meta));
+                                                    self.work_queue.extend(missing_paths);
+                                                } else {
+                                                    // For non-empty structs, at least one path is present, so we buffer the
+                                                    // missing paths. These will be added to the work queue when a backtracking
+                                                    // path transition occurs during value traversal.
+                                                    self.buffer_missing_paths(fields, &path, props);
+                                                }
                                             }
                                             _ => {
                                                 return Some(Err(ParseError::ListTypeMismatch {
