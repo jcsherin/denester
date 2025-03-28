@@ -959,25 +959,6 @@ impl<'a> Iterator for ValueParser<'a> {
                                     }));
                                 }
 
-                                // The index position is crucial to computing the repetition
-                                // level of a list element.
-                                //
-                                // We must therefore advance the iterator after getting the
-                                // level info, but before processing the element. This ensures
-                                // that the next element will find the iterator in the right
-                                // state when retrieving level info.
-                                let (rep, def) =
-                                    match self.get_repetition_and_definition_level(&path) {
-                                        Ok((r, d)) => {
-                                            match self.advance_list_iterator(&path) {
-                                                Ok(_) => {}
-                                                Err(err) => return Some(Err(err)),
-                                            }
-                                            (r, d)
-                                        }
-                                        Err(err) => return Some(Err(err)),
-                                    };
-
                                 // Shallow type-checking intentionally skips list element type
                                 // verification to keep the process simple.
                                 //
@@ -1001,9 +982,28 @@ impl<'a> Iterator for ValueParser<'a> {
                                             (DataType::Boolean, Value::Boolean(_))
                                             | (DataType::Integer, Value::Integer(_))
                                             | (DataType::String, Value::String(_)) => {
+                                                // The index position is crucial to computing the repetition
+                                                // level of a list element.
+                                                //
+                                                // We must therefore advance the iterator after getting the
+                                                // level info, but before processing the element. This ensures
+                                                // that the next element will find the iterator in the right
+                                                // state when retrieving level info.
+                                                let (rep, def) = match self
+                                                    .get_repetition_and_definition_level(&path)
+                                                {
+                                                    Ok((r, d)) => {
+                                                        match self.advance_list_iterator(&path) {
+                                                            Ok(_) => (r, d),
+                                                            Err(err) => return Some(Err(err)),
+                                                        }
+                                                    }
+                                                    Err(err) => return Some(Err(err)),
+                                                };
+
                                                 return Some(self.get_column_from_scalar_list(
                                                     &path, &field, value, rep, def,
-                                                ))
+                                                ));
                                             }
                                             (DataType::Struct(fields), Value::Struct(props)) => {
                                                 self.push_fields_context(&field, &path);
