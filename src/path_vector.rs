@@ -1,18 +1,8 @@
-mod field;
-mod field_path;
-mod parser;
-mod schema;
-mod value;
-
-pub use field::{DataType, Field};
-pub use schema::{Schema, SchemaBuilder};
-pub use value::Value;
-
 // TODO: Convert `PathVector` to newtype instead of a type alias
-type PathVector = Vec<String>;
-type PathVectorSlice<'a> = &'a [String];
+pub(crate) type PathVector = Vec<String>;
+pub(crate) type PathVectorSlice<'a> = &'a [String];
 
-trait PathVectorExt {
+pub(crate) trait PathVectorExt {
     fn format(&self) -> String;
     fn is_root(&self) -> bool;
     fn append_name(&self, name: String) -> PathVector;
@@ -53,16 +43,5 @@ impl PathVectorExt for PathVector {
 
     fn prefix(&self, len: usize) -> PathVector {
         self.iter().take(len).cloned().collect()
-    }
-}
-
-struct FieldLevel<'a> {
-    iter: std::slice::Iter<'a, Field>,
-    path: PathVector,
-}
-
-impl<'a> FieldLevel<'a> {
-    fn new(iter: std::slice::Iter<'a, Field>, path: Vec<String>) -> Self {
-        Self { iter, path }
     }
 }

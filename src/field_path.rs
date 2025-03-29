@@ -1,6 +1,27 @@
-use crate::record::{DataType, Field, FieldLevel, PathVector, PathVectorSlice, Schema};
+use crate::field::{DataType, Field};
+use crate::path_vector::{PathVector, PathVectorSlice};
+use crate::schema::Schema;
 use std::fmt::{Display, Formatter};
+use std::slice::Iter;
 
+pub(crate) struct FieldLevel<'a> {
+    iter: Iter<'a, Field>,
+    path: PathVector,
+}
+
+impl<'a> FieldLevel<'a> {
+    pub fn new(iter: Iter<'a, Field>, path: Vec<String>) -> Self {
+        Self { iter, path }
+    }
+
+    pub fn next(&mut self) -> Option<&'a Field> {
+        self.iter.next()
+    }
+
+    pub fn path(&self) -> &PathVector {
+        &self.path
+    }
+}
 #[derive(Debug, Clone)]
 pub struct FieldPath {
     field: Field,
@@ -233,14 +254,12 @@ impl<'a> Iterator for PathMetadataIterator<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::record::field_path::{
-        FieldPath, FieldPathIterator, PathMetadata, PathMetadataIterator,
-    };
-    use crate::record::schema::{
+    use crate::field::{DataType, Field};
+    use crate::field_path::{FieldPath, FieldPathIterator, PathMetadata, PathMetadataIterator};
+    use crate::schema::{
         bool, integer, optional_group, optional_integer, optional_string, repeated_group,
-        repeated_integer, required_group, string,
+        repeated_integer, required_group, string, SchemaBuilder,
     };
-    use crate::record::{DataType, Field, SchemaBuilder};
 
     #[test]
     fn test_field_path() {

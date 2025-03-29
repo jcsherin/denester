@@ -1,7 +1,9 @@
-use crate::record::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
-use crate::record::parser::ParseError::{RequiredFieldIsNull, RequiredFieldsAreMissing};
-use crate::record::value::{DepthFirstValueIterator, TypeCheckError};
-use crate::record::{DataType, Field, PathVector, PathVectorExt, PathVectorSlice, Schema, Value};
+use crate::field::{DataType, Field};
+use crate::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
+use crate::parser::ParseError::{RequiredFieldIsNull, RequiredFieldsAreMissing};
+use crate::path_vector::{PathVector, PathVectorExt, PathVectorSlice};
+use crate::schema::Schema;
+use crate::value::{DepthFirstValueIterator, TypeCheckError, Value};
 use std::collections::{HashSet, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
@@ -359,7 +361,7 @@ impl<T> Iterator for DequeStack<T> {
 }
 
 #[derive(Debug, Default, Clone)]
-struct StructContext {
+pub(crate) struct StructContext {
     fields: Vec<Field>,
     path: PathVector,
 }
@@ -1164,12 +1166,11 @@ impl<'a> Iterator for ValueParser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::record::schema::{
+    use crate::schema::{
         bool, integer, optional_group, optional_integer, repeated_group, repeated_integer,
-        required_group, string,
+        required_group, string, SchemaBuilder,
     };
-    use crate::record::value::ValueBuilder;
-    use crate::record::SchemaBuilder;
+    use crate::value::ValueBuilder;
 
     #[test]
     fn test_optional_field_contains_null() {

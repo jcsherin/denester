@@ -1,4 +1,5 @@
-use crate::record::{DataType, Field, PathVector};
+use crate::field::{DataType, Field};
+use crate::path_vector::PathVector;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Formatter;

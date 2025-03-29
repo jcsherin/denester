@@ -1,4 +1,6 @@
-use crate::record::{DataType, Field, FieldLevel, PathVector};
+use crate::field::{DataType, Field};
+use crate::field_path::FieldLevel;
+use crate::path_vector::PathVector;
 use std::fmt;
 use std::fmt::Formatter;
 use std::fmt::Write;
@@ -45,8 +47,8 @@ impl<'a> Iterator for DepthFirstSchemaIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(field_level) = self.stack.last_mut() {
-            if let Some(field) = field_level.iter.next() {
-                let mut path = field_level.path.clone();
+            if let Some(field) = field_level.next() {
+                let mut path = field_level.path().clone();
                 path.push(field.name().to_string());
 
                 match field.data_type() {
