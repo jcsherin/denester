@@ -703,10 +703,7 @@ impl<'a> ValueParser<'a> {
     /// level than other items.
     ///
     /// The definition level of a list item is independent of its index.
-    fn get_repetition_and_definition_level(
-        &self,
-        path: &PathVector,
-    ) -> Result<(RepetitionLevel, DefinitionLevel), ParseError<'a>> {
+    fn get_level_context(&self, path: &PathVector) -> Result<LevelContext, ParseError<'a>> {
         let list_context = match self.state.list_stack.last() {
             None => return Err(ParseError::MissingListContext { path: path.clone() }),
             Some(ctx) => ctx,
@@ -718,15 +715,19 @@ impl<'a> ValueParser<'a> {
         };
 
         if list_context.position() > 0 {
-            Ok((
-                level_context.repetition_depth,
-                level_context.definition_level,
-            ))
+            Ok(LevelContext {
+                definition_level: level_context.definition_level,
+                repetition_depth: level_context.repetition_depth,
+                repetition_level: level_context.repetition_depth,
+                path: path.clone(),
+            })
         } else {
-            Ok((
-                level_context.repetition_level,
-                level_context.definition_level,
-            ))
+            Ok(LevelContext {
+                definition_level: level_context.definition_level,
+                repetition_depth: level_context.repetition_depth,
+                repetition_level: level_context.repetition_level,
+                path: path.clone(),
+            })
         }
     }
 
@@ -989,12 +990,10 @@ impl<'a> Iterator for ValueParser<'a> {
                                                 // level info, but before processing the element. This ensures
                                                 // that the next element will find the iterator in the right
                                                 // state when retrieving level info.
-                                                let (rep, def) = match self
-                                                    .get_repetition_and_definition_level(&path)
-                                                {
-                                                    Ok((r, d)) => {
+                                                let ctx = match self.get_level_context(&path) {
+                                                    Ok(ctx) => {
                                                         match self.advance_list_iterator(&path) {
-                                                            Ok(_) => (r, d),
+                                                            Ok(_) => ctx,
                                                             Err(err) => return Some(Err(err)),
                                                         }
                                                     }
@@ -1002,10 +1001,32 @@ impl<'a> Iterator for ValueParser<'a> {
                                                 };
 
                                                 return Some(self.get_column_from_scalar_list(
-                                                    &path, &field, value, rep, def,
+                                                    &path,
+                                                    &field,
+                                                    value,
+                                                    ctx.repetition_level,
+                                                    ctx.definition_level,
                                                 ));
                                             }
                                             (DataType::Struct(fields), Value::Struct(props)) => {
+                                                // Struct values are handled differently from scalar list elements. The
+                                                // struct value does not terminate at this level. They may contain other
+                                                // nested values. The index of this struct value affects the repetition
+                                                // level. These computed values must be propagated down through the entire
+                                                // struct subtree.
+
+                                                match self.get_level_context(&path) {
+                                                    Err(err) => return Some(Err(err)),
+                                                    Ok(ctx) => {
+                                                        self.state.computed_levels.push(ctx);
+                                                        if let Err(err) =
+                                                            self.advance_list_iterator(&path)
+                                                        {
+                                                            return Some(Err(err));
+                                                        }
+                                                    }
+                                                }
+
                                                 self.push_fields_context(&field, &path);
 
                                                 // If props is empty, add the missing paths directly to the work queue
