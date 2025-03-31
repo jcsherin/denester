@@ -1,6 +1,6 @@
 mod field;
 mod field_path;
-mod parser;
+pub mod parser;
 mod path_vector;
-mod schema;
-mod value;
+pub mod schema;
+pub mod value;

@@ -487,7 +487,7 @@ impl ValueParserState {
 }
 
 impl<'a> ValueParser<'a> {
-    fn new(schema: &'a Schema, value_iter: DepthFirstValueIterator<'a>) -> Self {
+    pub fn new(schema: &'a Schema, value_iter: DepthFirstValueIterator<'a>) -> Self {
         let paths = PathMetadataIterator::new(schema).collect::<Vec<_>>();
         let state = ValueParserState::new(schema);
 
