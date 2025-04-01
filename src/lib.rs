@@ -1,4 +1,4 @@
-mod field;
+pub mod field;
 mod field_path;
 pub mod parser;
 mod path_vector;
