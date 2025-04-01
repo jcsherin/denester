@@ -46,6 +46,6 @@ fn main() {
 
     let mut parser = ValueParser::new(&schema, value.iter_depth_first());
     while let Some(column) = parser.next() {
-            println!("{:#?}", column);
+        println!("{:#?}", column);
     }
 }
