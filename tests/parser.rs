@@ -481,3 +481,121 @@ mod missing_fields {
         );
     }
 }
+
+mod repeated_fields {
+    use super::*;
+
+    #[test]
+    fn test_repeated_struct_with_missing_values() {
+        // message doc {
+        //  repeated group a {      // def +1, rep +1
+        //      required int x;
+        //      optional int y; }}  // def +1
+        let schema = SchemaBuilder::new("doc", vec![])
+            .field(repeated_group(
+                "a",
+                vec![integer("x"), optional_integer("y")],
+            ))
+            .build();
+
+        // { a: [{x: 1}, {x: 2, y: 3} // y is missing in the first element of 'a'
+        let value = ValueBuilder::new()
+            .field(
+                "a",
+                vec![
+                    ValueBuilder::new().field("x", 1).build(), // y is missing here
+                    ValueBuilder::new().field("x", 2).field("y", 3).build(),
+                ],
+            )
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 4);
+
+        // --- First struct in list 'a' ---
+        // a[0].x
+        assert_column_striped_value(
+            &parsed[0],
+            &Value::Integer(Some(1)),
+            1,
+            0,
+            "Parsed[0] (a[0].x)",
+        );
+        // a[0].y - y is missing
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::Integer(None),
+            1,
+            0,
+            "Parsed[1] (a[0].y - missing)",
+        );
+
+        // --- Second struct in list 'a' ---
+        // a[1].x
+        assert_column_striped_value(
+            &parsed[2],
+            &Value::Integer(Some(2)),
+            1,
+            1,
+            "Parsed[2] (a[1].x)",
+        );
+        // a[1].y
+        assert_column_striped_value(
+            &parsed[3],
+            &Value::Integer(Some(3)),
+            2,
+            1,
+            "Parsed[3] (a[1].y)",
+        );
+    }
+
+    #[test]
+    fn test_backtrack_struct_siblings() {
+        // message doc {
+        //  required group a {
+        //      optional int x },   // def +1
+        //  required group b {
+        //      optional int y }}   // def +1
+        let schema = SchemaBuilder::new("doc", vec![])
+            .field(required_group("a", vec![optional_integer("x")]))
+            .field(required_group("b", vec![optional_integer("y")]))
+            .build();
+
+        // { a: {}, b: {} } // x is missing in a, y is missing in b
+        let value = ValueBuilder::new()
+            .field("a", ValueBuilder::new().build())
+            .field("b", ValueBuilder::new().build())
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 2);
+
+        // Assert missing fields
+        // a.x (x is missing)
+        assert_column_striped_value(
+            &parsed[0],
+            &Value::Integer(None),
+            0,
+            0,
+            "Parsed[0] (a.x - missing)",
+        );
+        // b.y (y is missing)
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::Integer(None),
+            0,
+            0,
+            "Parsed[1] (b.y - missing)",
+        );
+    }
+}
