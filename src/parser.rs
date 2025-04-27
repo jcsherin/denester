@@ -233,7 +233,6 @@ impl LevelContext {
 }
 
 pub struct ValueParser<'a> {
-    schema: &'a Schema,
     paths: Vec<PathMetadata>,
     value_iter: Peekable<DepthFirstValueIterator<'a>>,
     state: ValueParserState,
@@ -245,17 +244,14 @@ pub struct ValueParser<'a> {
 #[derive(Debug)]
 struct ListContext {
     field_name: String,
-    length: usize,
     current_index: usize,
     depth: usize,
 }
 
 impl ListContext {
-    // TODO: Do not allow creating a list context with length zero
-    fn new(field_name: String, length: usize, depth: usize) -> Self {
+    fn new(field_name: String, depth: usize) -> Self {
         Self {
             field_name,
-            length,
             current_index: 0,
             depth,
         }
@@ -269,20 +265,12 @@ impl ListContext {
         &self.field_name
     }
 
-    pub fn len(&self) -> usize {
-        self.length
-    }
-
     pub fn position(&self) -> usize {
         self.current_index
     }
 
     pub fn advance(&mut self) {
         self.current_index += 1;
-    }
-
-    pub fn is_exhausted(&self) -> bool {
-        self.current_index >= self.length
     }
 }
 
@@ -358,21 +346,14 @@ impl<T> Iterator for DequeStack<T> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct StructContext {
+pub struct StructContext {
     fields: Vec<Field>,
     path: PathVector,
 }
 
 impl StructContext {
     fn new(fields: Vec<Field>, path: PathVector) -> Self {
-        Self {
-            fields: fields,
-            path: path,
-        }
-    }
-
-    fn fields(&self) -> &[Field] {
-        self.fields.as_slice()
+        Self { fields, path }
     }
 
     fn path(&self) -> &PathVector {
@@ -477,7 +458,7 @@ impl ValueParserState {
 
         // TODO: add `depth` method to PathVector
         let curr_depth = curr_path.len();
-        while !self.list_stack.is_empty() && self.list_stack.last().unwrap().depth > curr_depth {
+        while !self.list_stack.is_empty() && self.list_stack.last().unwrap().depth() > curr_depth {
             self.list_stack.pop().unwrap();
         }
     }
@@ -492,7 +473,6 @@ impl<'a> ValueParser<'a> {
         let work_queue = VecDeque::new();
 
         Self {
-            schema,
             paths,
             value_iter,
             state,
@@ -554,10 +534,10 @@ impl<'a> ValueParser<'a> {
     ///
     /// In a nested value there maybe multiple nested list values in a path. The stack makes it
     /// trivial to track the list element index during depth-first traversal at any nesting level.
-    fn push_list_iterator_context(&mut self, field: &Field, path: &PathVector, size: usize) {
+    fn push_list_iterator_context(&mut self, field: &Field, path: &PathVector) {
         self.state
             .list_stack
-            .push(ListContext::new(field.name().to_string(), size, path.len()));
+            .push(ListContext::new(field.name().to_string(), path.len()));
     }
 
     /// Adds a frame to stack with field definitions for type-checking children
@@ -949,8 +929,8 @@ impl<'a> Iterator for ValueParser<'a> {
                                             }
                                         }
                                     }
-                                    Value::List(items) => {
-                                        self.push_list_iterator_context(&field, &path, items.len());
+                                    Value::List(_) => {
+                                        self.push_list_iterator_context(&field, &path);
                                     }
                                     Value::Struct(props) => {
                                         self.push_fields_context(&field, &path);
@@ -1441,5 +1421,4 @@ mod tests {
         assert_eq!(parsed[1].repetition_level, 0);
         assert_eq!(parsed[2].repetition_level, 0);
     }
-
 }
