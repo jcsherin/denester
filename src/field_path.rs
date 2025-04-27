@@ -1,3 +1,4 @@
+use crate::common::{DefinitionLevel, RepetitionLevel};
 use crate::field::{DataType, Field};
 use crate::path_vector::{PathVector, PathVectorSlice};
 use crate::schema::Schema;
@@ -139,8 +140,8 @@ impl<'a> Iterator for FieldPathIterator<'a> {
 #[derive(Debug, Clone)]
 pub struct PathMetadata {
     field_path: FieldPath,
-    definition_level: u8,
-    repetition_level: u8,
+    definition_level: DefinitionLevel,
+    repetition_level: RepetitionLevel,
 }
 
 impl PathMetadata {
@@ -156,6 +157,14 @@ impl PathMetadata {
 
     pub fn path(&self) -> PathVectorSlice {
         self.field_path.path()
+    }
+
+    pub fn definition_level(&self) -> DefinitionLevel {
+        self.definition_level
+    }
+
+    pub fn repetition_level(&self) -> RepetitionLevel {
+        self.repetition_level
     }
 
     pub fn len(&self) -> usize {
@@ -356,176 +365,5 @@ mod tests {
         assert_eq!(path_metadata.path(), vec!["user", "name"]);
         assert_eq!(path_metadata.definition_level, 0);
         assert_eq!(path_metadata.repetition_level, 0);
-    }
-
-    /// Schema example from the paper:
-    ///     Dremel: Interactive Analysis of Web-Scale Datasets
-    ///
-    /// ```text
-    /// message Document {
-    ///   required int64 DocId;
-    ///   optional group Links {
-    ///     repeated int64 Backward;
-    ///     repeated int64 Forward;
-    ///   }
-    ///   repeated group Name {
-    ///     repeated group Language {
-    ///       required string Code;
-    ///       optional string Country;
-    ///     }
-    ///     optional string Url;
-    ///   }
-    /// }
-    ///
-    /// Paths in Document,
-    ///     1. DocId
-    ///     2. Links.Backward
-    ///     3. Links.Forward
-    ///     4. Name.Language.Code
-    ///     5. Name.Language.Country
-    ///     6. Name.Url
-    ///
-    ///
-    /// | Path                  | Definition Level | Repetition Level |
-    /// |-----------------------|------------------|------------------|
-    /// | DocId                 | 0                | 0                |
-    /// | Links.Backward        | 2                | 1                |
-    /// | Links.Forward         | 2                | 1                |
-    /// | Name.Language.Code    | 2                | 2                |
-    /// | Name.Language.Country | 3                | 2                |
-    /// | Name.Url              | 2                | 1                |
-    /// ```
-    #[test]
-    fn test_dremel_schema_path_metadata() {
-        let schema = SchemaBuilder::new("dremel", vec![])
-            .field(integer("DocId"))
-            .field(optional_group(
-                "Links",
-                vec![repeated_integer("Backward"), repeated_integer("Forward")],
-            ))
-            .field(repeated_group(
-                "Name",
-                vec![
-                    repeated_group("Language", vec![string("Code"), optional_string("Country")]),
-                    optional_string("Url"),
-                ],
-            ))
-            .build();
-
-        let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
-
-        let actual = PathMetadata::new(&schema, paths[0].clone());
-        assert_eq!(actual.field().data_type(), &DataType::Integer);
-        assert_eq!(actual.field().name(), "DocId");
-        assert_eq!(actual.field().is_optional(), false);
-        assert_eq!(actual.path(), vec!["DocId"]);
-        assert_eq!(actual.definition_level, 0);
-        assert_eq!(actual.repetition_level, 0);
-
-        let actual = PathMetadata::new(&schema, paths[1].clone());
-        assert_eq!(
-            actual.field().data_type(),
-            &DataType::List(Box::new(DataType::Integer))
-        );
-        assert_eq!(actual.field().name(), "Backward");
-        assert_eq!(actual.field().is_optional(), true);
-        assert_eq!(actual.path(), vec!["Links", "Backward"]);
-        assert_eq!(actual.definition_level, 2);
-        assert_eq!(actual.repetition_level, 1);
-
-        let actual = PathMetadata::new(&schema, paths[2].clone());
-        assert_eq!(
-            actual.field().data_type(),
-            &DataType::List(Box::new(DataType::Integer))
-        );
-        assert_eq!(actual.field().name(), "Forward");
-        assert_eq!(actual.path(), vec!["Links", "Forward"]);
-        assert_eq!(actual.definition_level, 2);
-        assert_eq!(actual.repetition_level, 1);
-
-        let actual = PathMetadata::new(&schema, paths[3].clone());
-        assert_eq!(actual.field().data_type(), &DataType::String);
-        assert_eq!(actual.field().name(), "Code");
-        assert_eq!(actual.field().is_optional(), false);
-        assert_eq!(actual.path(), vec!["Name", "Language", "Code"]);
-        assert_eq!(actual.definition_level, 2);
-        assert_eq!(actual.repetition_level, 2);
-
-        let actual = PathMetadata::new(&schema, paths[4].clone());
-        assert_eq!(actual.field().data_type(), &DataType::String);
-        assert_eq!(actual.field().name(), "Country");
-        assert_eq!(actual.field().is_optional(), true);
-        assert_eq!(actual.path(), vec!["Name", "Language", "Country"]);
-        assert_eq!(actual.definition_level, 3);
-        assert_eq!(actual.repetition_level, 2);
-
-        let actual = PathMetadata::new(&schema, paths[5].clone());
-        assert_eq!(actual.field().data_type(), &DataType::String);
-        assert_eq!(actual.field().name(), "Url");
-        assert_eq!(actual.field().is_optional(), true);
-        assert_eq!(actual.path(), vec!["Name", "Url"]);
-        assert_eq!(actual.definition_level, 2);
-        assert_eq!(actual.repetition_level, 1);
-    }
-
-    /// Schema:
-    /// ```text
-    /// message Order {
-    ///   required integer id;
-    ///   repeated group items {
-    ///     required integer item_id;
-    ///     optional integer quantity;
-    ///   }
-    ///   required group customer {
-    ///     required string name;
-    ///     optional string email;
-    ///   }
-    /// }
-    ///
-    /// | Path              | Definition Level | Repetition Level |
-    /// |-------------------|------------------|------------------|
-    /// | id                | 0                | 0                |
-    /// | items.item_id     | 1                | 1                |
-    /// | items.quantity    | 2                | 1                |
-    /// | customer.name     | 0                | 0                |
-    /// | customer.email    | 1                | 0                |
-    /// ```
-    #[test]
-    fn test_path_metadata_iterator() {
-        let schema = SchemaBuilder::new("Order", vec![])
-            .field(integer("id"))
-            .field(repeated_group(
-                "items",
-                vec![integer("item_id"), optional_integer("quantity")],
-            ))
-            .field(required_group(
-                "customer",
-                vec![string("name"), optional_string("email")],
-            ))
-            .build();
-
-        let path_metadata = PathMetadataIterator::new(&schema).collect::<Vec<_>>();
-
-        assert_eq!(path_metadata.len(), 5);
-
-        assert_eq!(path_metadata[0].path(), ["id"]);
-        assert_eq!(path_metadata[0].definition_level, 0);
-        assert_eq!(path_metadata[0].repetition_level, 0);
-
-        assert_eq!(path_metadata[1].path(), ["items", "item_id"]);
-        assert_eq!(path_metadata[1].definition_level, 1);
-        assert_eq!(path_metadata[1].repetition_level, 1);
-
-        assert_eq!(path_metadata[2].path(), ["items", "quantity"]);
-        assert_eq!(path_metadata[2].definition_level, 2);
-        assert_eq!(path_metadata[2].repetition_level, 1);
-
-        assert_eq!(path_metadata[3].path(), ["customer", "name"]);
-        assert_eq!(path_metadata[3].definition_level, 0);
-        assert_eq!(path_metadata[3].repetition_level, 0);
-
-        assert_eq!(path_metadata[4].path(), ["customer", "email"]);
-        assert_eq!(path_metadata[4].definition_level, 1);
-        assert_eq!(path_metadata[4].repetition_level, 0);
     }
 }

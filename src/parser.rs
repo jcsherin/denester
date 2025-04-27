@@ -1,3 +1,4 @@
+use crate::common::{DefinitionLevel, RepetitionDepth, RepetitionLevel};
 use crate::field::{DataType, Field};
 use crate::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
 use crate::parser::ParseError::{RequiredFieldIsNull, RequiredFieldsAreMissing};
@@ -188,10 +189,6 @@ impl<'a> Display for ParseError<'a> {
         }
     }
 }
-
-type DefinitionLevel = u8;
-type RepetitionLevel = u8;
-type RepetitionDepth = u8;
 
 #[derive(Debug)]
 struct LevelContext {
