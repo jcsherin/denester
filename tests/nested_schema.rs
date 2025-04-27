@@ -5,13 +5,16 @@ use denester::schema::{
     SchemaBuilder,
 };
 
-/// Integration tests for modeling nested schema
+/// Integration tests using the example schema from the [Dremel paper]
 ///
-/// These tests verify that we can correctly model and access complex nested documents with
-/// optional, required and repeated fields. The schema used for testing can be found in the paper:
-/// "Dremel: Interactive Analysis of Web-Scale Datasets".
+/// These tests verify several aspects using the complex "Document" schema:
+/// 1. Creation of the schema with required, optional and repeated fields.
+/// 2. Enumeration of all field paths using `FieldPathIterator`.
+/// 3. Calculation of max definition and repetition levels using `PathMetadataIterator`.
+///
+/// [Dremel paper]: https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36632.pdf
 
-/// Create schema from the example listed in the Dremel paper
+/// Create nested schema from the Dremel paper
 ///
 /// ```text
 /// message Document {
