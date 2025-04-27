@@ -78,7 +78,7 @@ impl fmt::Display for DataType {
             DataType::String => write!(f, "String"),
             DataType::List(ref inner) => write!(f, "List [ {} ]", inner),
             DataType::Struct(fields) => {
-                writeln!(f, "Struct {}", "{")?;
+                writeln!(f, "Struct {{")?;
                 let mut buf = String::new();
                 for field in fields.iter() {
                     writeln!(buf, "  {},", field)?;
@@ -91,7 +91,7 @@ impl fmt::Display for DataType {
                         .collect::<Vec<_>>()
                         .join("\n")
                 )?;
-                write!(f, "{}", "}")
+                write!(f, "}}")
             }
         }
     }
