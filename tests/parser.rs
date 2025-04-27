@@ -1,0 +1,256 @@
+use denester::common::{DefinitionLevel, RepetitionLevel};
+use denester::parser::{StripedColumnValue, ValueParser};
+use denester::schema::{integer, optional_group, required_group, SchemaBuilder};
+use denester::value::{Value, ValueBuilder};
+
+// Helper function
+fn assert_column_striped_value(
+    actual: &StripedColumnValue,
+    expected_value: &Value,
+    expected_def: DefinitionLevel,
+    expected_rep: RepetitionLevel,
+    message_prefix: &str,
+) {
+    assert_eq!(
+        actual.value(),
+        expected_value,
+        "{}: Value mismatch",
+        message_prefix
+    );
+    assert_eq!(
+        actual.definition_level(),
+        expected_def,
+        "{}: Definition level mismatch",
+        message_prefix
+    );
+    assert_eq!(
+        actual.repetition_level(),
+        expected_rep,
+        "{}: Repetition level mismatch",
+        message_prefix
+    );
+}
+
+mod basic_parsing {
+    use super::*;
+    use denester::schema::{repeated_group, repeated_integer, string};
+
+    #[test]
+    fn test_nested_struct() {
+        let schema = SchemaBuilder::new("nested_struct", vec![])
+            .field(required_group(
+                "a",
+                vec![
+                    required_group("b", vec![required_group("c", vec![integer("d")])]),
+                    optional_group("x", vec![optional_group("y", vec![integer("z")])]),
+                ],
+            ))
+            .build();
+
+        let value = ValueBuilder::new()
+            .field(
+                "a",
+                ValueBuilder::new()
+                    .field(
+                        "b",
+                        ValueBuilder::new()
+                            .field("c", ValueBuilder::new().field("d", 1).build())
+                            .build(),
+                    )
+                    .field(
+                        "x",
+                        ValueBuilder::new()
+                            .field("y", ValueBuilder::new().field("z", 2).build())
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 2);
+
+        // Check value d: path a.b.c.d (all required)
+        assert_column_striped_value(
+            &parsed[0],
+            &Value::Integer(Some(1)),
+            0,
+            0,
+            "Parsed[0] path a.b.c.d",
+        );
+
+        // Check value z: path a.x.y.z (x and y are optional)
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::Integer(Some(2)),
+            2,
+            0,
+            "Parsed[1] path a.x.y.z",
+        );
+    }
+
+    #[test]
+    fn test_schema_links() {
+        // message doc {
+        //   optional group Links {         // def +1
+        //      repeated int Backward;      // def +1, rep +1
+        //      repeated int Forward; }}    // def +1, rep +1
+        let schema = SchemaBuilder::new("Doc", vec![])
+            .field(optional_group(
+                "Links",
+                vec![repeated_integer("Backward"), repeated_integer("Forward")],
+            ))
+            .build();
+
+        // { Links: Forward: [20, 40, 60] } // Backward is missing
+        let value = ValueBuilder::new()
+            .field(
+                "Links",
+                ValueBuilder::new()
+                    .repeated("Forward", vec![20, 40, 60]) // Missing "backward"
+                    .build(),
+            )
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        // Expected 3 values for Forward, 1 null for missing Backward
+        assert_eq!(parsed.len(), 4);
+
+        // Assert present fields first
+        assert_column_striped_value(
+            &parsed[0],
+            &Value::Integer(Some(20)),
+            2,
+            0,
+            "Parsed[0] (Forward[0])",
+        );
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::Integer(Some(40)),
+            2,
+            1,
+            "Parsed[1] (Forward[1])",
+        );
+        assert_column_striped_value(
+            &parsed[2],
+            &Value::Integer(Some(60)),
+            2,
+            1,
+            "Parsed[2] (Forward[2])",
+        );
+
+        // Assert missing fields
+        assert_column_striped_value(
+            &parsed[3],
+            &Value::Integer(None),
+            1,
+            0,
+            "Parsed[3] (Backward - missing)",
+        )
+    }
+
+    #[test]
+    fn test_schema_code() {
+        // message doc {
+        //  repeated group Name {           // def +1, rep +1
+        //    repeated group Language {     // def +1, rep +1
+        //      required string Code; }}}
+        let schema = SchemaBuilder::new(
+            "doc",
+            vec![repeated_group(
+                "Name",
+                vec![repeated_group("Language", vec![string("Code")])],
+            )],
+        )
+        .build();
+
+        // Name[0]: { Language: [{Code: 'en-us'}, {Code: 'en'}] }
+        // Name[1]: {}                                              // Missing language group
+        // Name[2]: { Language: [{Code: 'en-gb'}] }
+        let value = ValueBuilder::new()
+            .repeated(
+                "Name",
+                vec![
+                    // Name[0]
+                    ValueBuilder::new()
+                        .repeated(
+                            "Language",
+                            vec![
+                                ValueBuilder::new().field("Code", "en-us").build(), // Language[0]
+                                ValueBuilder::new().field("Code", "en").build(),    // Language[1]
+                            ],
+                        )
+                        .build(),
+                    // Name[1] - Empty struct, Language is missing
+                    ValueBuilder::new().build(),
+                    // Name[2]
+                    ValueBuilder::new()
+                        .repeated(
+                            "Language",
+                            vec![ValueBuilder::new().field("Code", "en-gb").build()], // Language[0]
+                        )
+                        .build(),
+                ],
+            )
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        // Expected output
+        // Code | r | d
+        // -----|---|---
+        // en-us| 0 | 2 (First Name, First Language)
+        // en   | 2 | 2 (First Name, Second Language)
+        // NULL | 1 | 1 (Second Name, Missing Language)
+        // en-gb| 1 | 2 (Third Name, First Language)
+        assert_eq!(parsed.len(), 4);
+
+        // Name[0].Language[0].Code
+        assert_column_striped_value(
+            &parsed[0],
+            &Value::String(Some(String::from("en-us"))),
+            2,
+            0,
+            "Parsed[0] (Name[0].Language[0].Code)",
+        );
+
+        // Name[0].Language[1].Code
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::String(Some(String::from("en"))),
+            2,
+            2,
+            "Parsed[1] (Name[0].Language[1].Code)",
+        );
+        // Name[1] - Language group is missing
+        assert_column_striped_value(
+            &parsed[2],
+            &Value::String(None),
+            1,
+            1,
+            "Parsed[2] (Name[1] - Language missing)",
+        );
+        // Name[2].Language[0].Code
+        assert_column_striped_value(
+            &parsed[3],
+            &Value::String(Some(String::from("en-gb"))),
+            2,
+            1,
+            "Parsed[3] (Name[2].Language[0].Code)",
+        );
+    }
+}

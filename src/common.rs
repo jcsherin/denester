@@ -1,3 +1,3 @@
-pub(crate) type DefinitionLevel = u8;
-pub(crate) type RepetitionLevel = u8;
-pub(crate) type RepetitionDepth = u8;
+pub type DefinitionLevel = u8;
+pub type RepetitionLevel = u8;
+pub type RepetitionDepth = u8;

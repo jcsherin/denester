@@ -762,6 +762,18 @@ impl StripedColumnValue {
             definition_level,
         }
     }
+
+    pub fn value(&self) -> &Value {
+        &self.value
+    }
+
+    pub fn definition_level(&self) -> DefinitionLevel {
+        self.definition_level
+    }
+
+    pub fn repetition_level(&self) -> RepetitionLevel {
+        self.repetition_level
+    }
 }
 
 #[derive(Debug, Default)]
@@ -1390,173 +1402,6 @@ mod tests {
         assert_eq!(parsed[3].repetition_level, 0);
         assert_eq!(parsed[4].repetition_level, 1);
         assert_eq!(parsed[5].repetition_level, 1);
-    }
-
-    #[test]
-    fn test_nested_struct() {
-        let schema = SchemaBuilder::new("nested_struct", vec![])
-            .field(required_group(
-                "a",
-                vec![
-                    required_group("b", vec![required_group("c", vec![integer("d")])]),
-                    optional_group("x", vec![optional_group("y", vec![integer("z")])]),
-                ],
-            ))
-            .build();
-
-        let value = ValueBuilder::new()
-            .field(
-                "a",
-                ValueBuilder::new()
-                    .field(
-                        "b",
-                        ValueBuilder::new()
-                            .field("c", ValueBuilder::new().field("d", 1).build())
-                            .build(),
-                    )
-                    .field(
-                        "x",
-                        ValueBuilder::new()
-                            .field("y", ValueBuilder::new().field("z", 2).build())
-                            .build(),
-                    )
-                    .build(),
-            )
-            .build();
-
-        let parser = ValueParser::new(&schema, value.iter_depth_first());
-        let parsed = parser
-            .into_iter()
-            .filter_map(Result::ok)
-            .collect::<Vec<_>>();
-
-        assert_eq!(parsed.len(), 2);
-
-        assert_eq!(parsed[0].value, Value::Integer(Some(1)));
-        assert_eq!(parsed[1].value, Value::Integer(Some(2)));
-
-        assert_eq!(parsed[0].definition_level, 0);
-        assert_eq!(parsed[1].definition_level, 2);
-
-        assert_eq!(parsed[0].repetition_level, 0);
-        assert_eq!(parsed[1].repetition_level, 0);
-    }
-
-    #[test]
-    fn test_schema_links() {
-        // message doc {
-        //   optional group Links {
-        //      repeated int Backward;
-        //      repeated int Forward; }}
-        let schema = SchemaBuilder::new("Doc", vec![])
-            .field(optional_group(
-                "Links",
-                vec![repeated_integer("Backward"), repeated_integer("Forward")],
-            ))
-            .build();
-
-        // { links:
-        //      forward: [20, 40, 60] }
-        let value = ValueBuilder::new()
-            .field(
-                "Links",
-                ValueBuilder::new()
-                    .repeated("Forward", vec![20, 40, 60])
-                    .build(),
-            )
-            .build();
-
-        let parser = ValueParser::new(&schema, value.iter_depth_first());
-        let parsed = parser
-            .into_iter()
-            .filter_map(Result::ok)
-            .collect::<Vec<_>>();
-
-        assert_eq!(parsed.len(), 4);
-        assert_eq!(parsed[0].value, Value::Integer(Some(20)));
-        assert_eq!(parsed[1].value, Value::Integer(Some(40)));
-        assert_eq!(parsed[2].value, Value::Integer(Some(60)));
-
-        assert_eq!(parsed[0].definition_level, 2);
-        assert_eq!(parsed[1].definition_level, 2);
-        assert_eq!(parsed[2].definition_level, 2);
-
-        assert_eq!(parsed[0].repetition_level, 0);
-        assert_eq!(parsed[1].repetition_level, 1);
-        assert_eq!(parsed[2].repetition_level, 1);
-    }
-
-    #[test]
-    fn test_schema_code() {
-        // message doc {
-        //  repeated group Name {
-        //    repeated group Language {
-        //      required string Code; }}}
-        let schema = SchemaBuilder::new(
-            "doc",
-            vec![repeated_group(
-                "Name",
-                vec![repeated_group("Language", vec![string("Code")])],
-            )],
-        )
-        .build();
-
-        // Name
-        //  Language
-        //    Code: 'en-us'
-        //  Language
-        //    Code: 'en'
-        // Name
-        // Name
-        //  Language
-        //    Code: 'en-gb'
-        let value = ValueBuilder::new()
-            .repeated(
-                "Name",
-                vec![
-                    ValueBuilder::new() // 0
-                        .repeated(
-                            "Language",
-                            vec![
-                                ValueBuilder::new().field("Code", "en-us").build(),
-                                ValueBuilder::new().field("Code", "en").build(),
-                            ],
-                        )
-                        .build(),
-                    ValueBuilder::new().build(), // 1
-                    ValueBuilder::new() // 2
-                        .repeated(
-                            "Language",
-                            vec![ValueBuilder::new().field("Code", "en-gb").build()],
-                        )
-                        .build(),
-                ],
-            )
-            .build();
-
-        let parser = ValueParser::new(&schema, value.iter_depth_first());
-        let parsed = parser
-            .into_iter()
-            .filter_map(Result::ok)
-            .collect::<Vec<_>>();
-
-        // TODO: handle missing repeated fields
-        assert_eq!(parsed.len(), 4);
-
-        assert_eq!(parsed[0].value, Value::String(Some(String::from("en-us"))));
-        assert_eq!(parsed[1].value, Value::String(Some(String::from("en"))));
-        assert_eq!(parsed[2].value, Value::String(None));
-        assert_eq!(parsed[3].value, Value::String(Some(String::from("en-gb"))));
-
-        assert_eq!(parsed[0].definition_level, 2);
-        assert_eq!(parsed[1].definition_level, 2);
-        assert_eq!(parsed[2].definition_level, 1);
-        assert_eq!(parsed[3].definition_level, 2);
-
-        assert_eq!(parsed[0].repetition_level, 0);
-        assert_eq!(parsed[1].repetition_level, 2);
-        assert_eq!(parsed[2].repetition_level, 1);
-        assert_eq!(parsed[3].repetition_level, 1);
     }
 
     #[test]
