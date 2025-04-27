@@ -1,6 +1,9 @@
 use denester::common::{DefinitionLevel, RepetitionLevel};
 use denester::parser::{StripedColumnValue, ValueParser};
-use denester::schema::{integer, optional_group, required_group, SchemaBuilder};
+use denester::schema::{
+    integer, optional_group, optional_integer, repeated_group, repeated_integer, required_group,
+    string, SchemaBuilder,
+};
 use denester::value::{Value, ValueBuilder};
 
 // Helper function
@@ -33,7 +36,6 @@ fn assert_column_striped_value(
 
 mod basic_parsing {
     use super::*;
-    use denester::schema::{repeated_group, repeated_integer, string};
 
     #[test]
     fn test_nested_struct() {
@@ -251,6 +253,231 @@ mod basic_parsing {
             2,
             1,
             "Parsed[3] (Name[2].Language[0].Code)",
+        );
+    }
+}
+
+mod missing_fields {
+    use super::*;
+    #[test]
+    fn test_nested_missing_fields() {
+        // message doc {
+        //  required group a {
+        //      required int x
+        //      optional int y },   // def +1
+        //  required int b }
+        let schema = SchemaBuilder::new("doc", vec![])
+            .field(required_group(
+                "a",
+                vec![integer("x"), optional_integer("y")],
+            ))
+            .field(integer("b"))
+            .build();
+
+        // { a: { x: 1 }, b: 2 } // y is missing inside a
+        let value = ValueBuilder::new()
+            .field("a", ValueBuilder::new().field("x", 1).build()) // y is missing
+            .field("b", 2)
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 3);
+
+        // a.x is present in the value
+        assert_column_striped_value(
+            &parsed[0],
+            &Value::Integer(Some(1)),
+            0,
+            0,
+            "Parsed[0] (a.x)",
+        );
+
+        // a.y: y is missing, processed after present fields in its group 'a'
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::Integer(None),
+            0,
+            0,
+            "Parsed[1] (a.y - missing)",
+        );
+
+        // b
+        assert_column_striped_value(&parsed[2], &Value::Integer(Some(2)), 0, 0, "Parsed[2] (b)");
+    }
+
+    #[test]
+    fn test_multiple_nested_missing_fields() {
+        // message doc {
+        //  required group a {
+        //      required int x
+        //      optional int y },   // def +1
+        //  optional int b }        // def +1
+        let schema = SchemaBuilder::new("doc", vec![])
+            .field(required_group(
+                "a",
+                vec![integer("x"), optional_integer("y")],
+            ))
+            .field(optional_integer("b"))
+            .build();
+
+        // { a: { x: 1 } } // y is missing inside a, b is missing at top-level
+        let value = ValueBuilder::new()
+            .field("a", ValueBuilder::new().field("x", 1).build())
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 3);
+
+        // a.x
+        assert_column_striped_value(
+            &parsed[0],
+            &Value::Integer(Some(1)),
+            0,
+            0,
+            "Parsed[0] (a.x)",
+        );
+
+        // a.y: y is optional and missing
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::Integer(None),
+            0,
+            0,
+            "Parsed[1] (a.y - missing)",
+        );
+
+        // b: b is optional and missing
+        assert_column_striped_value(
+            &parsed[2],
+            &Value::Integer(None),
+            0,
+            0,
+            "Parsed[2] (b - missing)",
+        );
+    }
+
+    #[test]
+    fn test_missing_struct() {
+        // message doc {
+        //  optional group a {      // def +1
+        //      required int x
+        //      optional int y },   // def +1
+        //  required int b }
+        let schema = SchemaBuilder::new("doc", vec![])
+            .field(optional_group(
+                "a",
+                vec![integer("x"), optional_integer("y")],
+            ))
+            .field(integer("b"))
+            .build();
+
+        // { b: 1 } // Entire group 'a' is missing
+        let value = ValueBuilder::new().field("b", 1).build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 3);
+
+        // Assert present fields first
+        // b
+        assert_column_striped_value(&parsed[0], &Value::Integer(Some(1)), 0, 0, "Parsed[0] (b)");
+
+        // Assert missing fields from group 'a'
+        // a.x
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::Integer(None),
+            0,
+            0,
+            "Parsed[1] (a.x - missing)",
+        );
+
+        // a.y
+        assert_column_striped_value(
+            &parsed[2],
+            &Value::Integer(None),
+            0,
+            0,
+            "Parsed[2] (a.y - missing)",
+        );
+    }
+
+    #[test]
+    fn test_deep_nesting_missing_fields() {
+        // message doc {
+        //  optional group a {                  // def +1
+        //      required group b {
+        //          optional group c {          // def +1
+        //             required int x;
+        //             optional int y; }}}}     // def +1
+        let schema = SchemaBuilder::new("doc", vec![])
+            .field(optional_group(
+                "a",
+                vec![required_group(
+                    "b",
+                    vec![optional_group(
+                        "c",
+                        vec![integer("x"), optional_integer("y")],
+                    )],
+                )],
+            ))
+            .build();
+
+        // Value: { a: { b: { c: { x: 1 } } } } // y is missing inside c
+        let value = ValueBuilder::new()
+            .field(
+                "a",
+                ValueBuilder::new()
+                    .field(
+                        "b",
+                        ValueBuilder::new()
+                            .field("c", ValueBuilder::new().field("x", 1).build())
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 2);
+
+        // Assert present field
+        // a.b.c.x
+        assert_column_striped_value(
+            &parsed[0],
+            &Value::Integer(Some(1)),
+            2,
+            0,
+            "Parsed[0] (a.b.c.x)",
+        );
+
+        // Assert missing field
+        // a.b.c.y - y is missing inside group 'c'
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::Integer(None),
+            2,
+            0,
+            "Parsed[1] (a.b.c.y - missing)",
         );
     }
 }
