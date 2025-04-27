@@ -1,5 +1,5 @@
 use denester::field::{DataType, Field};
-use denester::field_path::{FieldPathIterator, PathMetadata, PathMetadataIterator};
+use denester::field_path::{FieldPathIterator, PathMetadataIterator};
 use denester::schema::{
     integer, optional_group, optional_string, repeated_group, repeated_integer, string, Schema,
     SchemaBuilder,

@@ -264,11 +264,8 @@ impl<'a> Iterator for PathMetadataIterator<'a> {
 #[cfg(test)]
 mod tests {
     use crate::field::{DataType, Field};
-    use crate::field_path::{FieldPath, FieldPathIterator, PathMetadata, PathMetadataIterator};
-    use crate::schema::{
-        bool, integer, optional_group, optional_integer, optional_string, repeated_group,
-        repeated_integer, required_group, string, SchemaBuilder,
-    };
+    use crate::field_path::{FieldPath, FieldPathIterator, PathMetadata};
+    use crate::schema::{bool, integer, required_group, string, SchemaBuilder};
 
     #[test]
     fn test_field_path() {

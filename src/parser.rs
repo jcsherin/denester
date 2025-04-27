@@ -1155,10 +1155,7 @@ impl<'a> Iterator for ValueParser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::{
-        bool, integer, optional_group, optional_integer, repeated_group, repeated_integer,
-        required_group, string, SchemaBuilder,
-    };
+    use crate::schema::{bool, integer, optional_integer, repeated_integer, string, SchemaBuilder};
     use crate::value::ValueBuilder;
 
     #[test]
