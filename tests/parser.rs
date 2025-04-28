@@ -49,20 +49,20 @@ mod basic_parsing {
             ))
             .build();
 
-        let value = ValueBuilder::new()
+        let value = ValueBuilder::default()
             .field(
                 "a",
-                ValueBuilder::new()
+                ValueBuilder::default()
                     .field(
                         "b",
-                        ValueBuilder::new()
-                            .field("c", ValueBuilder::new().field("d", 1).build())
+                        ValueBuilder::default()
+                            .field("c", ValueBuilder::default().field("d", 1).build())
                             .build(),
                     )
                     .field(
                         "x",
-                        ValueBuilder::new()
-                            .field("y", ValueBuilder::new().field("z", 2).build())
+                        ValueBuilder::default()
+                            .field("y", ValueBuilder::default().field("z", 2).build())
                             .build(),
                     )
                     .build(),
@@ -110,10 +110,10 @@ mod basic_parsing {
             .build();
 
         // { Links: Forward: [20, 40, 60] } // Backward is missing
-        let value = ValueBuilder::new()
+        let value = ValueBuilder::default()
             .field(
                 "Links",
-                ValueBuilder::new()
+                ValueBuilder::default()
                     .repeated("Forward", vec![20, 40, 60]) // Missing "backward"
                     .build(),
             )
@@ -179,27 +179,27 @@ mod basic_parsing {
         // Name[0]: { Language: [{Code: 'en-us'}, {Code: 'en'}] }
         // Name[1]: {}                                              // Missing language group
         // Name[2]: { Language: [{Code: 'en-gb'}] }
-        let value = ValueBuilder::new()
+        let value = ValueBuilder::default()
             .repeated(
                 "Name",
                 vec![
                     // Name[0]
-                    ValueBuilder::new()
+                    ValueBuilder::default()
                         .repeated(
                             "Language",
                             vec![
-                                ValueBuilder::new().field("Code", "en-us").build(), // Language[0]
-                                ValueBuilder::new().field("Code", "en").build(),    // Language[1]
+                                ValueBuilder::default().field("Code", "en-us").build(), // Language[0]
+                                ValueBuilder::default().field("Code", "en").build(), // Language[1]
                             ],
                         )
                         .build(),
                     // Name[1] - Empty struct, Language is missing
-                    ValueBuilder::new().build(),
+                    ValueBuilder::default().build(),
                     // Name[2]
-                    ValueBuilder::new()
+                    ValueBuilder::default()
                         .repeated(
                             "Language",
-                            vec![ValueBuilder::new().field("Code", "en-gb").build()], // Language[0]
+                            vec![ValueBuilder::default().field("Code", "en-gb").build()], // Language[0]
                         )
                         .build(),
                 ],
@@ -275,8 +275,8 @@ mod missing_fields {
             .build();
 
         // { a: { x: 1 }, b: 2 } // y is missing inside a
-        let value = ValueBuilder::new()
-            .field("a", ValueBuilder::new().field("x", 1).build()) // y is missing
+        let value = ValueBuilder::default()
+            .field("a", ValueBuilder::default().field("x", 1).build()) // y is missing
             .field("b", 2)
             .build();
 
@@ -326,8 +326,8 @@ mod missing_fields {
             .build();
 
         // { a: { x: 1 } } // y is missing inside a, b is missing at top-level
-        let value = ValueBuilder::new()
-            .field("a", ValueBuilder::new().field("x", 1).build())
+        let value = ValueBuilder::default()
+            .field("a", ValueBuilder::default().field("x", 1).build())
             .build();
 
         let parser = ValueParser::new(&schema, value.iter_depth_first());
@@ -382,7 +382,7 @@ mod missing_fields {
             .build();
 
         // { b: 1 } // Entire group 'a' is missing
-        let value = ValueBuilder::new().field("b", 1).build();
+        let value = ValueBuilder::default().field("b", 1).build();
 
         let parser = ValueParser::new(&schema, value.iter_depth_first());
         let parsed = parser
@@ -438,14 +438,14 @@ mod missing_fields {
             .build();
 
         // Value: { a: { b: { c: { x: 1 } } } } // y is missing inside c
-        let value = ValueBuilder::new()
+        let value = ValueBuilder::default()
             .field(
                 "a",
-                ValueBuilder::new()
+                ValueBuilder::default()
                     .field(
                         "b",
-                        ValueBuilder::new()
-                            .field("c", ValueBuilder::new().field("x", 1).build())
+                        ValueBuilder::default()
+                            .field("c", ValueBuilder::default().field("x", 1).build())
                             .build(),
                     )
                     .build(),
@@ -499,12 +499,12 @@ mod repeated_fields {
             .build();
 
         // { a: [{x: 1}, {x: 2, y: 3} // y is missing in the first element of 'a'
-        let value = ValueBuilder::new()
+        let value = ValueBuilder::default()
             .field(
                 "a",
                 vec![
-                    ValueBuilder::new().field("x", 1).build(), // y is missing here
-                    ValueBuilder::new().field("x", 2).field("y", 3).build(),
+                    ValueBuilder::default().field("x", 1).build(), // y is missing here
+                    ValueBuilder::default().field("x", 2).field("y", 3).build(),
                 ],
             )
             .build();
@@ -567,9 +567,9 @@ mod repeated_fields {
             .build();
 
         // { a: {}, b: {} } // x is missing in a, y is missing in b
-        let value = ValueBuilder::new()
-            .field("a", ValueBuilder::new().build())
-            .field("b", ValueBuilder::new().build())
+        let value = ValueBuilder::default()
+            .field("a", ValueBuilder::default().build())
+            .field("b", ValueBuilder::default().build())
             .build();
 
         let parser = ValueParser::new(&schema, value.iter_depth_first());

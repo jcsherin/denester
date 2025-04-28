@@ -1161,7 +1161,7 @@ mod tests {
     #[test]
     fn test_optional_field_contains_null() {
         let schema = SchemaBuilder::new("optional_field", vec![optional_integer("x")]).build();
-        let value = ValueBuilder::new().optional_integer("x", None).build();
+        let value = ValueBuilder::default().optional_integer("x", None).build();
         let parser = ValueParser::new(&schema, value.iter_depth_first());
         let parsed = parser
             .into_iter()
@@ -1177,7 +1177,7 @@ mod tests {
     #[test]
     fn test_top_level_optional_field_is_missing() {
         let schema = SchemaBuilder::new("optional_field", vec![optional_integer("x")]).build();
-        let value = ValueBuilder::new().build();
+        let value = ValueBuilder::default().build();
         let parser = ValueParser::new(&schema, value.iter_depth_first());
         let parsed = parser
             .into_iter()
@@ -1193,7 +1193,9 @@ mod tests {
     #[test]
     fn test_optional_field_contains_value() {
         let schema = SchemaBuilder::new("optional_field", vec![optional_integer("x")]).build();
-        let value = ValueBuilder::new().optional_integer("x", Some(10)).build();
+        let value = ValueBuilder::default()
+            .optional_integer("x", Some(10))
+            .build();
         let parser = ValueParser::new(&schema, value.iter_depth_first());
         let parsed = parser
             .into_iter()
@@ -1209,7 +1211,7 @@ mod tests {
     #[test]
     fn test_required_field_contains_value() {
         let schema = SchemaBuilder::new("required_field", vec![integer("x")]).build();
-        let value = ValueBuilder::new().field("x", 10).build();
+        let value = ValueBuilder::default().field("x", 10).build();
         let parser = ValueParser::new(&schema, value.iter_depth_first());
         let parsed = parser
             .into_iter()
@@ -1225,7 +1227,7 @@ mod tests {
     #[test]
     fn test_required_field_is_missing() {
         let schema = SchemaBuilder::new("required_field", vec![integer("x")]).build();
-        let value = ValueBuilder::new().build();
+        let value = ValueBuilder::default().build();
         let mut parser = ValueParser::new(&schema, value.iter_depth_first());
 
         assert!(matches!(parser.next().unwrap(),
@@ -1237,7 +1239,9 @@ mod tests {
     #[test]
     fn test_required_field_contains_null() {
         let schema = SchemaBuilder::new("required_field", vec![integer("x")]).build();
-        let value = ValueBuilder::new().field("x", Value::Integer(None)).build();
+        let value = ValueBuilder::default()
+            .field("x", Value::Integer(None))
+            .build();
         let mut parser = ValueParser::new(&schema, value.iter_depth_first());
 
         assert!(matches!(parser.next().unwrap(),
@@ -1251,7 +1255,7 @@ mod tests {
     #[test]
     fn test_repeated_scalar_field_is_empty() {
         let schema = SchemaBuilder::new("repeated_field", vec![repeated_integer("xs")]).build();
-        let value = ValueBuilder::new()
+        let value = ValueBuilder::default()
             .repeated("xs", Vec::<Value>::new())
             .build();
         let mut parser = ValueParser::new(&schema, value.iter_depth_first());
@@ -1268,7 +1272,9 @@ mod tests {
     #[test]
     fn test_repeated_field_is_not_empty() {
         let schema = SchemaBuilder::new("repeated_field", vec![repeated_integer("xs")]).build();
-        let value = ValueBuilder::new().repeated("xs", vec![1, 2, 3]).build();
+        let value = ValueBuilder::default()
+            .repeated("xs", vec![1, 2, 3])
+            .build();
         let mut parser = ValueParser::new(&schema, value.iter_depth_first());
 
         let item1 = parser.next().unwrap();
@@ -1323,7 +1329,7 @@ mod tests {
     #[test]
     fn test_top_level_repeated_field_is_missing() {
         let schema = SchemaBuilder::new("repeated_field", vec![repeated_integer("xs")]).build();
-        let value = ValueBuilder::new().build();
+        let value = ValueBuilder::default().build();
         let mut parser = ValueParser::new(&schema, value.iter_depth_first());
 
         let item = parser.next().unwrap();
@@ -1347,7 +1353,7 @@ mod tests {
         )
         .build();
 
-        let value = ValueBuilder::new()
+        let value = ValueBuilder::default()
             .field("name", "Patricia")
             .field("id", 1001)
             .field("enrolled", true)
@@ -1394,7 +1400,7 @@ mod tests {
             .build();
 
         // { a: 1, c: 3 }
-        let value = ValueBuilder::new().field("a", 1).field("c", 3).build();
+        let value = ValueBuilder::default().field("a", 1).field("c", 3).build();
 
         let parser = ValueParser::new(&schema, value.iter_depth_first());
         let parsed = parser

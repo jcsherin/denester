@@ -101,15 +101,12 @@ impl From<Vec<(String, Value)>> for Value {
     }
 }
 
+#[derive(Default)]
 pub struct ValueBuilder {
     fields: Vec<(String, Value)>,
 }
 
 impl ValueBuilder {
-    pub fn new() -> Self {
-        Self { fields: vec![] }
-    }
-
     pub fn field(mut self, key: impl Into<String>, value: impl Into<Value>) -> Self {
         self.fields.push((key.into(), value.into()));
         self
@@ -561,7 +558,7 @@ mod tests {
 
     #[test]
     fn test_empty_builder() {
-        let actual = ValueBuilder::new().build();
+        let actual = ValueBuilder::default().build();
         let expected = Value::Struct(vec![]);
 
         assert_eq!(actual, expected);
@@ -569,7 +566,7 @@ mod tests {
 
     #[test]
     fn test_builder_required_fields() {
-        let actual = ValueBuilder::new()
+        let actual = ValueBuilder::default()
             .field("name", "Patricia")
             .field("id", 1001)
             .field("enrolled", true)
@@ -598,7 +595,7 @@ mod tests {
 
     #[test]
     fn test_builder_optional_fields() {
-        let actual = ValueBuilder::new()
+        let actual = ValueBuilder::default()
             .optional_string("name", None::<&str>)
             .optional_integer("id", None::<i64>)
             .optional_boolean("enrolled", None::<bool>)
@@ -617,7 +614,7 @@ mod tests {
 
     #[test]
     fn test_builder_repeated_fields() {
-        let actual = ValueBuilder::new()
+        let actual = ValueBuilder::default()
             .repeated("empty", Vec::<Value>::new())
             .repeated("non-empty", vec![1, 2])
             .build();
@@ -635,7 +632,7 @@ mod tests {
 
     #[test]
     fn test_builder_repeated_with_nulls() {
-        let actual = ValueBuilder::new()
+        let actual = ValueBuilder::default()
             .repeated("xs", vec![Some(1), None, Some(2), None])
             .build();
 
@@ -654,18 +651,18 @@ mod tests {
 
     #[test]
     fn test_builder_nested_fields() {
-        let actual = ValueBuilder::new()
+        let actual = ValueBuilder::default()
             .field(
                 "a",
-                ValueBuilder::new()
+                ValueBuilder::default()
                     .repeated(
                         "b",
                         vec![
-                            ValueBuilder::new()
+                            ValueBuilder::default()
                                 .field("c", false)
                                 .field("d", 1011)
                                 .build(),
-                            ValueBuilder::new()
+                            ValueBuilder::default()
                                 .field("c", true)
                                 .field("d", 1010)
                                 .build(),

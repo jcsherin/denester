@@ -20,24 +20,24 @@ fn main() {
     )
     .build();
 
-    let value = ValueBuilder::new()
+    let value = ValueBuilder::default()
         .repeated(
             "Name",
             vec![
-                ValueBuilder::new() // 0
+                ValueBuilder::default() // 0
                     .repeated(
                         "Language",
                         vec![
-                            ValueBuilder::new().field("Code", "en-us").build(),
-                            ValueBuilder::new().field("Code", "en").build(),
+                            ValueBuilder::default().field("Code", "en-us").build(),
+                            ValueBuilder::default().field("Code", "en").build(),
                         ],
                     )
                     .build(),
-                ValueBuilder::new().build(), // 1
-                ValueBuilder::new() // 2
+                ValueBuilder::default().build(), // 1
+                ValueBuilder::default() // 2
                     .repeated(
                         "Language",
-                        vec![ValueBuilder::new().field("Code", "en-gb").build()],
+                        vec![ValueBuilder::default().field("Code", "en-gb").build()],
                     )
                     .build(),
             ],
