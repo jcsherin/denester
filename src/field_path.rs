@@ -167,10 +167,6 @@ impl PathMetadata {
         self.repetition_level
     }
 
-    pub fn len(&self) -> usize {
-        self.path().len()
-    }
-
     pub fn field(&self) -> &Field {
         self.field_path.field()
     }
