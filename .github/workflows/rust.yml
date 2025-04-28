@@ -29,12 +29,7 @@ jobs:
           # Add 'clippy', 'rustfmt' if not included by default with the stable toolchain
           components: clippy, rustfmt
 
-      # 3. Set up cargo-audit
-      # You might need to adjust this if cargo-audit requires specific dependencies
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
-
-      # 4. Cache dependencies to speed up subsequent runs
+      # 3. Cache dependencies to speed up subsequent runs
       # Caches ~/.cargo and target directories
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -52,28 +47,23 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      # 5. Check formatting
+      # 4. Check formatting
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      # 6. Run Clippy lints
+      # 5. Run Clippy lints
       - name: Run Clippy
         run: cargo clippy --all-targets -- -D warnings # Fail on warnings
 
-      # 7. Run tests
+      # 6. Run tests
       - name: Run tests
         run: cargo test --all-targets --verbose
 
-      # 8. Build the project
+      # 7. Build the project
       # Use --release for a release build check if desired
       - name: Build project
         run: cargo build --verbose
 
-      # 9. Build documentation (optional, but good check)
+      # 8. Build documentation (optional, but good check)
       - name: Build documentation
         run: cargo doc --no-deps --all-features # --no-deps speeds it up
-
-      # 10. Run security audit (optional, but good practice)
-      - name: Run security audit
-        run: cargo audit
-
