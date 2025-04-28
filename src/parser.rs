@@ -329,7 +329,7 @@ impl<T> Iterator for DequeStack<T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         // Removes all empty deques from top
-        while self.stack.last().map_or(false, VecDeque::is_empty) {
+        while self.stack.last().is_some_and(VecDeque::is_empty) {
             self.stack.pop();
         }
 
@@ -337,7 +337,7 @@ impl<T> Iterator for DequeStack<T> {
         let item = self.stack.last_mut()?.pop_front();
 
         // Pop the deque if it is now empty
-        if self.stack.last().map_or(false, VecDeque::is_empty) {
+        if self.stack.last().is_some_and(VecDeque::is_empty) {
             self.stack.pop();
         }
 
@@ -521,7 +521,7 @@ impl<'a> ValueParser<'a> {
             .last()
             .ok_or_else(|| ParseError::MissingLevelContext { path: path.clone() })?;
 
-        let new_ctx = parent_ctx.with_field(&field, &path);
+        let new_ctx = parent_ctx.with_field(field, path);
         self.state.computed_levels.push(new_ctx);
 
         Ok(())
@@ -550,7 +550,7 @@ impl<'a> ValueParser<'a> {
     /// value and buffer them for generating NULL column values after the present fields are
     /// processed during traversal.
     fn push_fields_context(&mut self, field: &Field, path: &PathVector) {
-        let fields = self.get_struct_fields(&field).to_vec();
+        let fields = self.get_struct_fields(field).to_vec();
 
         self.state
             .struct_stack
@@ -818,9 +818,9 @@ fn find_missing_paths(
     prefix: &PathVector,
     props: &[(String, Value)],
     fields: &[Field],
-    paths: &Vec<PathMetadata>,
+    paths: &[PathMetadata],
 ) -> Vec<PathMetadata> {
-    MissingFields::with_struct(&props, &fields)
+    MissingFields::with_struct(props, fields)
         .iter()
         .flat_map(|field_name| {
             let path = prefix.append_name(field_name.to_string());
@@ -893,7 +893,7 @@ impl<'a> Iterator for ValueParser<'a> {
 
                                 match value {
                                     Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
-                                        return Some(self.get_column_from_scalar(&path, &value))
+                                        return Some(self.get_column_from_scalar(&path, value))
                                     }
                                     Value::List(items) if items.is_empty() => {
                                         match field.data_type() {
