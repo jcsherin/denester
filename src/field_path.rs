@@ -188,11 +188,13 @@ impl PathMetadata {
             let field = current_fields
                 .iter()
                 .find(|f| f.name() == name)
-                .expect(&format!(
-                    "Field with name: {:?} not found in path: {:?}",
-                    name,
-                    field_path.path()
-                ));
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Field with name: {:?} not found in path: {:?}",
+                        name,
+                        field_path.path()
+                    )
+                });
 
             match field.data_type() {
                 DataType::Boolean | DataType::Integer | DataType::String | DataType::Struct(_) => {
