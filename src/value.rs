@@ -322,16 +322,16 @@ impl<'a> Iterator for DepthFirstValueIterator<'a> {
     type Item = (&'a Value, PathVector);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some((value, current_path)) = self.stack.pop() {
+        if let Some((value, current_path)) = self.stack.pop() {
             match value {
                 Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
-                    return Some((value, current_path))
+                    Some((value, current_path))
                 }
                 Value::List(values) => {
                     for item in values.iter().rev() {
                         self.stack.push((item, current_path.clone()))
                     }
-                    return Some((value, current_path));
+                    Some((value, current_path))
                 }
                 Value::Struct(fields) => {
                     for (key, value) in fields.iter().rev() {
@@ -339,11 +339,12 @@ impl<'a> Iterator for DepthFirstValueIterator<'a> {
                         new_path.push(key.to_string());
                         self.stack.push((value, new_path));
                     }
-                    return Some((value, current_path));
+                    Some((value, current_path))
                 }
             }
+        } else {
+            None
         }
-        None
     }
 }
 
