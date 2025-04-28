@@ -52,18 +52,17 @@ impl<'a> Iterator for DepthFirstSchemaIterator<'a> {
                 path.push(field.name().to_string());
 
                 match field.data_type() {
-                    DataType::List(item_type) => match item_type.as_ref() {
-                        DataType::Struct(children) => {
+                    DataType::List(item_type) => {
+                        if let DataType::Struct(children) = item_type.as_ref() {
                             self.stack
                                 .push(FieldLevel::new(children.iter(), path.clone()));
                         }
-                        _ => {}
-                    },
+                    }
                     DataType::Struct(children) => {
                         self.stack
                             .push(FieldLevel::new(children.iter(), path.clone()));
                     }
-                    _ => {}
+                    DataType::Boolean | DataType::Integer | DataType::String => {}
                 }
 
                 return Some((field, path));
