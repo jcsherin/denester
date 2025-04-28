@@ -107,7 +107,7 @@ mod tests {
 
         assert_eq!(field.name(), "name");
         assert_eq!(field.data_type(), &DataType::String);
-        assert_eq!(field.is_optional(), false);
+        assert!(!field.is_optional());
     }
 
     #[test]

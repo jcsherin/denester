@@ -13,7 +13,7 @@ use denester::schema::{
 /// 3. Calculation of max definition and repetition levels using `PathMetadataIterator`.
 ///
 /// [Dremel paper]: https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36632.pdf
-
+///
 /// Create nested schema from the Dremel paper
 ///
 /// ```text
@@ -75,9 +75,8 @@ mod schema_validation {
             &DataType::Integer,
             "DocId should be an Integer type"
         );
-        assert_eq!(
-            doc_id.is_optional(),
-            false,
+        assert!(
+            !doc_id.is_optional(),
             "DocId should be required (not optional)"
         );
     }
@@ -88,7 +87,7 @@ mod schema_validation {
         let links = &doc.fields()[1];
 
         assert_eq!(links.name(), "Links", "Second field should be Links");
-        assert_eq!(links.is_optional(), true, "Links group should be optional");
+        assert!(links.is_optional(), "Links group should be optional");
         match links.data_type() {
             DataType::Boolean | DataType::Integer | DataType::String | DataType::List(_) => {
                 panic!(
@@ -115,7 +114,7 @@ mod schema_validation {
                     &DataType::List(Box::new(DataType::Integer)),
                     "Backward should be a List of Integers"
                 );
-                assert_eq!(backward.is_optional(), true, "Backward should be optional");
+                assert!(backward.is_optional(), "Backward should be optional");
 
                 // Test Forward field
                 let forward = &fields[1];
@@ -129,7 +128,7 @@ mod schema_validation {
                     &DataType::List(Box::new(DataType::Integer)),
                     "Forward should be a List of Integers"
                 );
-                assert_eq!(forward.is_optional(), true, "Forward should be optional");
+                assert!(forward.is_optional(), "Forward should be optional");
             }
         }
     }
@@ -169,7 +168,7 @@ mod schema_validation {
                         &DataType::String,
                         "Url should be a String type"
                     );
-                    assert_eq!(url.is_optional(), true, "Url should be optional");
+                    assert!(url.is_optional(), "Url should be optional");
                 }
             },
         }
@@ -184,7 +183,7 @@ mod schema_validation {
             "Language",
             "First field in Name should be Language"
         );
-        assert_eq!(language.is_optional(), true, "Language should be optional");
+        assert!(language.is_optional(), "Language should be optional");
 
         match language.data_type() {
             DataType::Boolean | DataType::Integer | DataType::String | DataType::Struct(_) => {
@@ -214,9 +213,8 @@ mod schema_validation {
                         "Code",
                         "First field in Language should be Code"
                     );
-                    assert_eq!(
-                        code.is_optional(),
-                        false,
+                    assert!(
+                        !code.is_optional(),
                         "Code should be required (not optional)"
                     );
                     assert_eq!(
@@ -232,7 +230,7 @@ mod schema_validation {
                         "Country",
                         "Second field in Language should be Country"
                     );
-                    assert_eq!(country.is_optional(), true, "Country should be optional");
+                    assert!(country.is_optional(), "Country should be optional");
                     assert_eq!(
                         country.data_type(),
                         &DataType::String,

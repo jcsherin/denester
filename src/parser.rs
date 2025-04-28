@@ -1232,7 +1232,7 @@ mod tests {
 
         assert!(matches!(parser.next().unwrap(),
                 Err(RequiredFieldsAreMissing { missing, path })
-                if path.is_root() && missing.len() == 1 && missing[0] == String::from("x")));
+                if path.is_root() && missing.len() == 1 && missing[0] == *"x"));
         assert!(parser.next().is_none());
     }
 
@@ -1246,7 +1246,7 @@ mod tests {
 
         assert!(matches!(parser.next().unwrap(),
             Err(RequiredFieldIsNull { field_path })
-            if field_path.path() == &["x"] && field_path.field() == &integer("x")
+            if field_path.path() == ["x"] && field_path.field() == &integer("x")
         ));
         // TODO: add a test which contains other fields after the required field
         assert!(parser.next().is_none());
