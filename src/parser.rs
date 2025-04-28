@@ -1039,7 +1039,7 @@ impl<'a> Iterator for ValueParser<'a> {
                                                         &self.paths,
                                                     )
                                                     .into_iter()
-                                                    .map(|meta| WorkItem::MissingValue(meta));
+                                                    .map(WorkItem::MissingValue);
                                                     self.work_queue.extend(missing_paths);
                                                 } else {
                                                     // For non-empty structs, at least one path is present, so we buffer the
@@ -1141,7 +1141,7 @@ impl<'a> Iterator for ValueParser<'a> {
                 if !self.state.missing_paths_buffer.is_empty() {
                     let remaining = std::mem::take(&mut self.state.missing_paths_buffer);
                     self.work_queue
-                        .extend(remaining.map(|missing| WorkItem::MissingValue(missing)));
+                        .extend(remaining.map(WorkItem::MissingValue));
                 }
 
                 // Sentinel to signal the end. The value iterator is exhausted. All remaining
