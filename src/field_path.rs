@@ -61,7 +61,7 @@ impl<'a> FieldPathIterator<'a> {
     }
 }
 
-impl<'a> Iterator for FieldPathIterator<'a> {
+impl Iterator for FieldPathIterator<'_> {
     type Item = FieldPath;
 
     /**
@@ -251,7 +251,7 @@ impl<'a> PathMetadataIterator<'a> {
     }
 }
 
-impl<'a> Iterator for PathMetadataIterator<'a> {
+impl Iterator for PathMetadataIterator<'_> {
     type Item = PathMetadata;
 
     fn next(&mut self) -> Option<Self::Item> {

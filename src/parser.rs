@@ -66,7 +66,7 @@ pub enum ParseError<'a> {
     },
 }
 
-impl<'a> From<TypeCheckError> for ParseError<'a> {
+impl From<TypeCheckError> for ParseError<'_> {
     fn from(err: TypeCheckError) -> Self {
         match err {
             TypeCheckError::DataTypeMismatch { .. } => {
@@ -91,7 +91,7 @@ impl<'a> From<TypeCheckError> for ParseError<'a> {
     }
 }
 
-impl<'a> Display for ParseError<'a> {
+impl Display for ParseError<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             RequiredFieldIsNull { field_path } => {
