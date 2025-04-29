@@ -383,7 +383,7 @@ struct ValueParserState {
 }
 
 impl ValueParserState {
-    pub fn new(schema: &Schema) -> Self {
+    fn new(schema: &Schema) -> Self {
         if schema.is_empty() {
             Self::default()
         } else {
