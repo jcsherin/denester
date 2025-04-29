@@ -4,13 +4,8 @@
 //! Use the [`SchemaBuilder`] for schema construction, aided by helper functions
 //! like [`integer()`], [`string()`], [`optional_group()`], [`repeated_group()`]
 //! which simplify creating [`Field`] definitions.
-//!
-//! The [`DepthFirstSchemaIterator`] allows traversing the defined schema in a
-//! depth-first order.
 
 use crate::field::{DataType, Field};
-use crate::field_path::FieldLevel;
-use crate::path_vector::PathVector;
 use std::fmt::{self, Formatter, Write};
 
 /// Represents the schema definition for a nested data structure.
@@ -47,63 +42,9 @@ impl Schema {
         &self.fields
     }
 
-    /// Returns an iterator that performs a depth-first traversal of the schema
-    /// fields.
-    ///
-    /// The iterator yields tuples containing a reference to the [`Field`] and
-    /// the corresponding path from the root.
-    pub fn iter_depth_first(&self) -> DepthFirstSchemaIterator {
-        DepthFirstSchemaIterator {
-            stack: vec![FieldLevel::new(self.fields.iter(), vec![])],
-        }
-    }
-
     /// Checks if the schema defines any fields.
     pub fn is_empty(&self) -> bool {
         self.fields().is_empty()
-    }
-}
-
-/// A depth-first iterator for a [`Schema`].
-///
-/// The iterator returns a tuple which contains a reference to the leaf node in
-/// the schema, and the complete path from the root of the schema to the leaf
-/// node.
-#[derive(Debug)]
-pub struct DepthFirstSchemaIterator<'a> {
-    stack: Vec<FieldLevel<'a>>,
-}
-
-impl<'a> Iterator for DepthFirstSchemaIterator<'a> {
-    type Item = (&'a Field, PathVector);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(field_level) = self.stack.last_mut() {
-            if let Some(field) = field_level.next() {
-                let mut path = field_level.path().clone();
-                path.push(field.name().to_string());
-
-                match field.data_type() {
-                    DataType::List(item_type) => {
-                        if let DataType::Struct(children) = item_type.as_ref() {
-                            self.stack
-                                .push(FieldLevel::new(children.iter(), path.clone()));
-                        }
-                    }
-                    DataType::Struct(children) => {
-                        self.stack
-                            .push(FieldLevel::new(children.iter(), path.clone()));
-                    }
-                    DataType::Boolean | DataType::Integer | DataType::String => {}
-                }
-
-                return Some((field, path));
-            } else {
-                self.stack.pop();
-            }
-        }
-
-        None
     }
 }
 

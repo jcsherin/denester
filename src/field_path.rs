@@ -6,24 +6,17 @@ use std::fmt::{Display, Formatter};
 use std::slice::Iter;
 
 #[derive(Debug)]
-pub(crate) struct FieldLevel<'a> {
+struct FieldLevel<'a> {
     iter: Iter<'a, Field>,
     path: PathVector,
 }
 
 impl<'a> FieldLevel<'a> {
-    pub fn new(iter: Iter<'a, Field>, path: Vec<String>) -> Self {
+    fn new(iter: Iter<'a, Field>, path: Vec<String>) -> Self {
         Self { iter, path }
     }
-
-    pub fn next(&mut self) -> Option<&'a Field> {
-        self.iter.next()
-    }
-
-    pub fn path(&self) -> &PathVector {
-        &self.path
-    }
 }
+
 #[derive(Debug, Clone)]
 pub struct FieldPath {
     field: Field,
