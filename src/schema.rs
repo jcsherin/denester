@@ -1,17 +1,35 @@
+//! Defines the representation of nested data schemas ([`Schema`]) and provides
+//! functions for building and iterating over them.
+//!
+//! Use the [`SchemaBuilder`] for schema construction, aided by helper functions
+//! like [`integer()`], [`string()`], [`optional_group()`], [`repeated_group()`]
+//! which simplify creating [`Field`] definitions.
+//!
+//! The [`DepthFirstSchemaIterator`] allows traversing the defined schema in a
+//! depth-first order.
+
 use crate::field::{DataType, Field};
 use crate::field_path::FieldLevel;
 use crate::path_vector::PathVector;
-use std::fmt;
-use std::fmt::Formatter;
-use std::fmt::Write;
+use std::fmt::{self, Formatter, Write};
 
-#[derive(Debug)]
+/// Represents the schema definition for a nested data structure.
+///
+/// A schema consists of a name and list of top-level fields. Fields can
+/// be primitive (integer, string, bool) fields, nested fields (struct)
+/// and repeated fields (list).
+#[derive(Debug, Clone, PartialEq)]
 pub struct Schema {
     name: String,
     fields: Vec<Field>,
 }
 
 impl Schema {
+    /// Creates a new schema with a given name and top-level fields.
+    ///
+    /// # Parameters
+    /// * `name` - The schema name.
+    /// * `fields` - The top-level [`Field`] definitions.
     pub fn new(name: impl Into<String>, fields: Vec<Field>) -> Self {
         Self {
             name: name.into(),
@@ -19,25 +37,38 @@ impl Schema {
         }
     }
 
+    /// Returns the name of the schema
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Returns a slice of the top-level fields in the schema.
     pub fn fields(&self) -> &[Field] {
         &self.fields
     }
 
+    /// Returns an iterator that performs a depth-first traversal of the schema
+    /// fields.
+    ///
+    /// The iterator yields tuples containing a reference to the [`Field`] and
+    /// the corresponding path from the root.
     pub fn iter_depth_first(&self) -> DepthFirstSchemaIterator {
         DepthFirstSchemaIterator {
             stack: vec![FieldLevel::new(self.fields.iter(), vec![])],
         }
     }
 
+    /// Checks if the schema defines any fields.
     pub fn is_empty(&self) -> bool {
         self.fields().is_empty()
     }
 }
 
+/// A depth-first iterator for a [`Schema`].
+///
+/// The iterator returns a tuple which contains a reference to the leaf node in
+/// the schema, and the complete path from the root of the schema to the leaf
+/// node.
 #[derive(Debug)]
 pub struct DepthFirstSchemaIterator<'a> {
     stack: Vec<FieldLevel<'a>>,
@@ -111,60 +142,108 @@ impl SchemaBuilder {
         }
     }
 
+    /// Adds a field to the schema being built.
+    ///
+    /// # Parameters
+    /// * `field` - The [`Field`] definition to add.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use denester::schema::{integer, string};
+    /// # use denester::SchemaBuilder;
+    ///
+    /// let builder = SchemaBuilder::new("ExampleSchema")
+    /// .field(string("name"))
+    /// .field(integer("age"));
+    /// ```
     pub fn field(mut self, field: Field) -> Self {
         self.fields.push(field);
         self
     }
 
+    /// Consumes the builder and returns the constructed [`Schema`]
     pub fn build(self) -> Schema {
         Schema::new(self.name, self.fields)
     }
 }
 
+// --- Helper functions for Field creation ---
+
+/// Creates a required boolean field.
 pub fn bool(name: &str) -> Field {
     Field::new(name, DataType::Boolean, false)
 }
 
+/// Creates a required integer field.
 pub fn integer(name: &str) -> Field {
     Field::new(name, DataType::Integer, false)
 }
 
+/// Creates a required string field.
 pub fn string(name: &str) -> Field {
     Field::new(name, DataType::String, false)
 }
 
+/// Creates an optional boolean field.
 pub fn optional_bool(name: &str) -> Field {
     Field::new(name, DataType::Boolean, true)
 }
 
+/// Creates an optional integer field.
 pub fn optional_integer(name: &str) -> Field {
     Field::new(name, DataType::Integer, true)
 }
 
+/// Creates an optional string field.
 pub fn optional_string(name: &str) -> Field {
     Field::new(name, DataType::String, true)
 }
 
+/// Creates a repeated boolean field which is represented as a list of booleans.
+/// Repeated fields are implicitly optional meaning they can be either missing
+/// or empty.
 pub fn repeated_bool(name: &str) -> Field {
     Field::new(name, DataType::List(Box::new(DataType::Boolean)), true)
 }
 
+/// Creates a repeated integer field which is represented as a list of integers.
+/// Repeated fields are implicitly optional meaning they can be either missing
+/// or empty.
 pub fn repeated_integer(name: &str) -> Field {
     Field::new(name, DataType::List(Box::new(DataType::Integer)), true)
 }
 
+/// Creates a repeated string field which is represented as a list of strings.
+/// Repeated fields are implicitly optional meaning they can be either missing
+/// or empty.
 pub fn repeated_string(name: &str) -> Field {
     Field::new(name, DataType::List(Box::new(DataType::String)), true)
 }
 
+/// Creates a required group field (struct).
+///
+/// # Parameters
+/// * `name` - The name of the group field.
+/// * `fields` - The collection of [`Field`] definitions in this group.
 pub fn required_group(name: &str, fields: Vec<Field>) -> Field {
     Field::new(name, DataType::Struct(fields), false)
 }
 
+/// Creates an optional group field (struct).
+///
+/// # Parameters
+/// * `name` - The name of the group field.
+/// * `fields` - The collection of [`Field`] definitions in this group.
 pub fn optional_group(name: &str, fields: Vec<Field>) -> Field {
     Field::new(name, DataType::Struct(fields), true)
 }
 
+/// Creates a repeated group field (list of structs).
+///
+/// # Parameters
+/// * `name` - The name of the repeated group field.
+/// * `fields` - The collection of [`Field`] definitions defining the structure
+///     of the structs within the list.
 pub fn repeated_group(name: &str, fields: Vec<Field>) -> Field {
     Field::new(
         name,
