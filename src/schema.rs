@@ -153,8 +153,8 @@ impl SchemaBuilder {
     /// # use denester::SchemaBuilder;
     ///
     /// let builder = SchemaBuilder::new("ExampleSchema")
-    /// .field(string("name"))
-    /// .field(integer("age"));
+    ///     .field(string("name"))
+    ///     .field(integer("age"));
     /// ```
     pub fn field(mut self, field: Field) -> Self {
         self.fields.push(field);
