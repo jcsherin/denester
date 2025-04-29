@@ -375,7 +375,7 @@ enum WorkItem<'a> {
 
 #[derive(Debug, Default)]
 struct ValueParserState {
-    struct_stack: Vec<StructContext>,
+    struct_context_stack: Vec<StructContext>,
     list_stack: Vec<ListContext>,
     prev_path: PathVector,
     computed_levels: Vec<LevelContext>,
@@ -388,7 +388,7 @@ impl ValueParserState {
             Self::default()
         } else {
             Self {
-                struct_stack: vec![StructContext::new(
+                struct_context_stack: vec![StructContext::new(
                     schema.fields().to_vec(),
                     PathVector::root(),
                 )],
@@ -400,9 +400,8 @@ impl ValueParserState {
         }
     }
 
-    /// TODO: better naming for this method, and also the field member
-    pub fn peek_struct(&self) -> Option<&StructContext> {
-        self.struct_stack.last()
+    fn current_struct_context(&self) -> Option<&StructContext> {
+        self.struct_context_stack.last()
     }
 
     /// Manages state during tree traversal level transitions.
@@ -445,8 +444,8 @@ impl ValueParserState {
             self.computed_levels.pop().unwrap();
         }
 
-        while self.struct_stack.len() > 1 {
-            let top = self.struct_stack.last().unwrap();
+        while self.struct_context_stack.len() > 1 {
+            let top = self.struct_context_stack.last().unwrap();
 
             if top.path().is_root()
                 || (top.path().len() < curr_path.len() && curr_path.starts_with(top.path()))
@@ -454,7 +453,7 @@ impl ValueParserState {
                 break;
             }
 
-            self.struct_stack.pop().unwrap();
+            self.struct_context_stack.pop().unwrap();
         }
 
         // TODO: add `depth` method to PathVector
@@ -490,7 +489,7 @@ impl<'a> ValueParser<'a> {
         let field_name = path.last().unwrap();
 
         self.state
-            .peek_struct()
+            .current_struct_context()
             .ok_or_else(|| ParseError::FieldNameLookupMissingContext {
                 field_name: field_name.to_string(),
                 path: path.clone(),
@@ -554,7 +553,7 @@ impl<'a> ValueParser<'a> {
         let fields = self.get_struct_fields(field).to_vec();
 
         self.state
-            .struct_stack
+            .struct_context_stack
             .push(StructContext::new(fields, path.clone()));
     }
 
@@ -868,7 +867,7 @@ impl<'a> Iterator for ValueParser<'a> {
                             | Value::String(_)
                             | Value::List(_) => return Some(Err(ParseError::RootIsNotStruct)),
                         };
-                        let fields = match &self.state.peek_struct() {
+                        let fields = match &self.state.current_struct_context() {
                             None => return Some(Err(ParseError::MissingFieldsContext)),
                             Some(ctx) => &ctx.fields,
                         };
