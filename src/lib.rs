@@ -5,7 +5,7 @@
 //! structure in its original form back from the encoding.
 //!
 //! # Design
-//! The technique for column shredding is described in the [paper]
+//! The technique for column shredding is described in the paper:
 //! [Dremel: Interactive Analysis of Web-Scale Datasets](https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36632.pdf).
 
 #![warn(missing_debug_implementations)]
