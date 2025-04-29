@@ -1,6 +1,5 @@
-use denester::parser::ValueParser;
-use denester::schema::{repeated_group, string, SchemaBuilder};
-use denester::value::ValueBuilder;
+use denester::schema::{repeated_group, string};
+use denester::{SchemaBuilder, ValueBuilder, ValueParser};
 
 /// # Schema
 /// message doc {

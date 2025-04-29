@@ -2,8 +2,8 @@ use denester::field::{DataType, Field};
 use denester::field_path::{FieldPathIterator, PathMetadataIterator};
 use denester::schema::{
     integer, optional_group, optional_string, repeated_group, repeated_integer, string, Schema,
-    SchemaBuilder,
 };
+use denester::SchemaBuilder;
 
 /// Integration tests using the example schema from the [Dremel paper]
 ///

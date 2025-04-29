@@ -1,10 +1,11 @@
 use denester::common::{DefinitionLevel, RepetitionLevel};
-use denester::parser::{StripedColumnValue, ValueParser};
+use denester::parser::StripedColumnValue;
 use denester::schema::{
     integer, optional_group, optional_integer, repeated_group, repeated_integer, required_group,
-    string, SchemaBuilder,
+    string,
 };
-use denester::value::{Value, ValueBuilder};
+use denester::value::Value;
+use denester::{SchemaBuilder, ValueBuilder, ValueParser};
 
 // Helper function
 fn assert_column_striped_value(
