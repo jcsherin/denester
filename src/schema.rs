@@ -38,6 +38,7 @@ impl Schema {
     }
 }
 
+#[derive(Debug)]
 pub struct DepthFirstSchemaIterator<'a> {
     stack: Vec<FieldLevel<'a>>,
 }
@@ -89,6 +90,7 @@ impl fmt::Display for Schema {
     }
 }
 
+#[derive(Debug)]
 pub struct SchemaBuilder {
     name: String,
     fields: Vec<Field>,

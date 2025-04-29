@@ -101,7 +101,7 @@ impl From<Vec<(String, Value)>> for Value {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ValueBuilder {
     fields: Vec<(String, Value)>,
 }
@@ -141,6 +141,7 @@ impl ValueBuilder {
     }
 }
 
+#[derive(Debug)]
 pub struct DepthFirstValueIterator<'a> {
     stack: Vec<(&'a Value, PathVector)>,
 }

@@ -232,6 +232,7 @@ impl LevelContext {
     }
 }
 
+#[derive(Debug)]
 pub struct ValueParser<'a> {
     paths: Vec<PathMetadata>,
     value_iter: Peekable<DepthFirstValueIterator<'a>>,
@@ -372,7 +373,7 @@ enum WorkItem<'a> {
     NoMoreWork,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct ValueParserState {
     struct_stack: Vec<StructContext>,
     list_stack: Vec<ListContext>,

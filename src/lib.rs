@@ -1,3 +1,5 @@
+#![warn(missing_debug_implementations)]
+
 pub mod common;
 pub mod field;
 pub mod field_path;

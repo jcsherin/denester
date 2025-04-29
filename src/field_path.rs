@@ -5,6 +5,7 @@ use crate::schema::Schema;
 use std::fmt::{Display, Formatter};
 use std::slice::Iter;
 
+#[derive(Debug)]
 pub(crate) struct FieldLevel<'a> {
     iter: Iter<'a, Field>,
     path: PathVector,
@@ -49,6 +50,7 @@ impl Display for FieldPath {
     }
 }
 
+#[derive(Debug)]
 pub struct FieldPathIterator<'a> {
     levels: Vec<FieldLevel<'a>>,
 }
@@ -235,6 +237,7 @@ impl Display for PathMetadata {
     }
 }
 
+#[derive(Debug)]
 pub struct PathMetadataIterator<'a> {
     schema: &'a Schema,
     field_path_iter: FieldPathIterator<'a>,
