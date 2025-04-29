@@ -1,3 +1,6 @@
+//! Implements the core logic for parsing nested values according to a schema
+//! and producing a flattened representation suitable for columnar storage.
+
 use crate::common::{DefinitionLevel, RepetitionDepth, RepetitionLevel};
 use crate::field::{DataType, Field};
 use crate::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
@@ -10,6 +13,7 @@ use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
 use std::ops::Deref;
 
+/// TODO: Add docs after reviewing error handling
 #[derive(Debug)]
 pub enum ParseError<'a> {
     RequiredFieldIsNull {
@@ -230,16 +234,6 @@ impl LevelContext {
     fn path(&self) -> &PathVector {
         &self.path
     }
-}
-
-#[derive(Debug)]
-pub struct ValueParser<'a> {
-    paths: Vec<PathMetadata>,
-    value_iter: Peekable<DepthFirstValueIterator<'a>>,
-    state: ValueParserState,
-
-    // Queues for handling values and missing paths in correct order
-    work_queue: VecDeque<WorkItem<'a>>,
 }
 
 #[derive(Debug)]
@@ -464,7 +458,36 @@ impl ValueParserState {
     }
 }
 
+/// Parses a nested [`Value`] according to a [`Schema`], yielding flattened
+/// column values.
+///
+/// This struct implements the [`Iterator`] trait, where each item represents
+/// a single column value extracted from the nested structure, along with its
+/// computed definition and repetition levels described in the Dremel paper.
+///
+/// If a path present in the schema is missing in the value, or if it
+/// terminates early then a null value is produced with the definition and
+/// repetition levels.
+#[derive(Debug)]
+pub struct ValueParser<'a> {
+    /// Precomputed paths and max definition and repetition levels computed
+    /// from [`Schema`].
+    paths: Vec<PathMetadata>,
+    /// A depth-first iterator over the input nested [`Value`].
+    value_iter: Peekable<DepthFirstValueIterator<'a>>,
+    /// The internal state machine
+    state: ValueParserState,
+    /// A queue for decoupling depth-first value traversal from its processing
+    /// to simplify generating null values for missing paths.
+    work_queue: VecDeque<WorkItem<'a>>,
+}
+
 impl<'a> ValueParser<'a> {
+    /// Creates a new `ValueParser`.
+    ///
+    /// # Parameters
+    /// * `schema` - Reference schema for validating the input nested value.
+    /// * `value_iter` - A depth-first value iterator over the input nested value.
     pub fn new(schema: &'a Schema, value_iter: DepthFirstValueIterator<'a>) -> Self {
         let paths = PathMetadataIterator::new(schema).collect::<Vec<_>>();
         let state = ValueParserState::new(schema);
@@ -723,7 +746,11 @@ impl<'a> ValueParser<'a> {
     }
 }
 
-#[derive(Debug)]
+/// Represents a single flattened column value produced by the [`ValueParser`].
+///
+/// Contains the extracted value along with its computed definition and
+/// repetition level.
+#[derive(Debug, PartialEq, Clone)]
 pub struct StripedColumnValue {
     value: Value,
     repetition_level: RepetitionLevel,
@@ -743,14 +770,19 @@ impl StripedColumnValue {
         }
     }
 
+    /// Returns a reference to the [`Value`] extracted from the nested value.
+    ///
+    /// This maybe a primitive value or a null value.
     pub fn value(&self) -> &Value {
         &self.value
     }
 
+    /// Returns the computed definition level.
     pub fn definition_level(&self) -> DefinitionLevel {
         self.definition_level
     }
 
+    /// Returns the computed repetition level.
     pub fn repetition_level(&self) -> RepetitionLevel {
         self.repetition_level
     }
