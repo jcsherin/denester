@@ -184,7 +184,7 @@ pub fn optional_group(name: &str, fields: Vec<Field>) -> Field {
 /// # Parameters
 /// * `name` - The name of the repeated group field.
 /// * `fields` - The collection of [`Field`] definitions defining the structure
-///     of the structs within the list.
+///   of the structs within the list.
 pub fn repeated_group(name: &str, fields: Vec<Field>) -> Field {
     Field::new(
         name,

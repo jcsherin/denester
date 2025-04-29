@@ -49,8 +49,8 @@ impl Field {
     /// * `name` - Name of the field.
     /// * `data_type` - The [`DataType`] of the field.
     /// * `nullable` - `true` if the field is explicitly optional. This is
-    ///     independent of repeated fields which implicitly optional regardless
-    ///     of the internal state of this field.
+    ///   independent of repeated fields which implicitly optional regardless
+    ///   of the internal state of this field.
     pub fn new(name: impl Into<String>, data_type: DataType, nullable: bool) -> Self {
         // Stores the user provided nullable flag directly. The caller is
         // expected to use `is_optional()` which also handles repeated
