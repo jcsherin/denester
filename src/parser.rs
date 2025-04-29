@@ -1164,7 +1164,7 @@ mod tests {
         let schema = SchemaBuilder::new("optional_field")
             .field(optional_integer("x"))
             .build();
-        let value = ValueBuilder::default().optional_integer("x", None).build();
+        let value = ValueBuilder::default().integer("x", None).build();
         let parser = ValueParser::new(&schema, value.iter_depth_first());
         let parsed = parser
             .into_iter()
@@ -1200,9 +1200,7 @@ mod tests {
         let schema = SchemaBuilder::new("optional_field")
             .field(optional_integer("x"))
             .build();
-        let value = ValueBuilder::default()
-            .optional_integer("x", Some(10))
-            .build();
+        let value = ValueBuilder::default().integer("x", Some(10)).build();
         let parser = ValueParser::new(&schema, value.iter_depth_first());
         let parsed = parser
             .into_iter()

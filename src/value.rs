@@ -1,17 +1,30 @@
+//! Defines the representation of nested data structure values.
+
 use crate::field::{DataType, Field};
 use crate::path_vector::PathVector;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Formatter;
 
-/// None is used to represent NULL values corresponding to the type
-/// `Value::Boolean(None)` is a `Boolean` NULL value.
+/// Represents the concrete instance of nested data structure.
+///
+/// There is a one-one correspondence with [`DataType`] enum. This is useful
+/// to recursively type-check a concrete value against a schema to see if the
+/// value conforms to the schema.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
+    /// Boolean value (true/false) or null value
     Boolean(Option<bool>),
+    /// Signed integer value or null value
     Integer(Option<i64>),
+    /// String (UTF-8) value or null value
     String(Option<String>),
+    /// Repeated value represented as a list of elements. All list elements
+    /// are the same type. If there are zero elements it means this value
+    /// is considered empty.
     List(Vec<Value>),
+    /// A nested structure (group/record) containing name, value pairs. If
+    /// there are zero name, value pairs, then this value is considered empty.
     Struct(Vec<(String, Value)>),
 }
 
@@ -101,17 +114,23 @@ impl From<Vec<(String, Value)>> for Value {
     }
 }
 
-#[derive(Debug, Default)]
+/// Ergonomic builder pattern API for creating a concrete nested value.
+#[derive(Debug, Default, Clone)]
 pub struct ValueBuilder {
     fields: Vec<(String, Value)>,
 }
 
 impl ValueBuilder {
+    /// Add a name, value pair to the value being built.
     pub fn field(mut self, key: impl Into<String>, value: impl Into<Value>) -> Self {
         self.fields.push((key.into(), value.into()));
         self
     }
 
+    /// Add a name, repeated value to the value being built.
+    ///
+    /// A repeated value is represented as a [`Value::List`] of [`Value`]
+    /// elements. But nested lists are not permitted.
     pub fn repeated(
         mut self,
         key: impl Into<String>,
@@ -124,34 +143,32 @@ impl ValueBuilder {
         self
     }
 
-    pub fn optional_boolean(self, key: impl Into<String>, value: Option<bool>) -> Self {
+    /// Add a boolean type value or null value
+    pub fn boolean(self, key: impl Into<String>, value: Option<bool>) -> Self {
         self.field(key, <Option<bool> as Into<Value>>::into(value))
     }
 
-    pub fn optional_integer(self, key: impl Into<String>, value: Option<i64>) -> Self {
+    /// Add a integer type value or null value
+    pub fn integer(self, key: impl Into<String>, value: Option<i64>) -> Self {
         self.field(key, <Option<i64> as Into<Value>>::into(value))
     }
 
-    pub fn optional_string(self, key: impl Into<String>, value: Option<&str>) -> Self {
+    /// Add a string type value or null value
+    pub fn string(self, key: impl Into<String>, value: Option<&str>) -> Self {
         self.field(key, <Option<&str> as Into<Value>>::into(value))
     }
 
+    /// Consumes the builder and returns the constructed [`Value`]
     pub fn build(self) -> Value {
         Value::Struct(self.fields)
     }
 }
 
-#[derive(Debug)]
-pub struct DepthFirstValueIterator<'a> {
-    stack: Vec<(&'a Value, PathVector)>,
-}
-
 impl Value {
-    /// Returns NULL or missing values for a given data type
+    /// Returns either a null or an empty value based on the [`DataType`].
     ///
-    /// For scalar values always return NULL
-    /// For list return an empty list
-    /// For struct return with zero properties
+    /// # Parameters
+    /// * `data_type` - The [`DataType`] of the value.
     pub fn create_null_or_empty(data_type: &DataType) -> Self {
         match data_type {
             DataType::Boolean => Value::Boolean(None),
@@ -162,6 +179,7 @@ impl Value {
         }
     }
 
+    /// Returns a depth-first iterator for a [`Value`].
     pub fn iter_depth_first(&self) -> DepthFirstValueIterator {
         DepthFirstValueIterator {
             stack: vec![(self, PathVector::default())],
@@ -173,6 +191,20 @@ impl Value {
     /// For repeated values `Value::List(_)` the individual items in the list are not type checked.
     /// Similarly, for records `Value::Struct(_)` the field names should match. The values are not
     /// type checked.
+    ///
+    /// Returns a type-checking error if value does not match field definition.
+    ///
+    /// The type-checking performed is shallow and does not attempt to validate the entire nested
+    /// data structure. This is not a limitation but guarantees stable performance. A recursive
+    /// type-checking of the entire value can be implemented lazily by composing
+    /// [`Value::iter_depth_first`] and calling this method after visiting each value node.
+    ///
+    /// This means,
+    /// - For [`Value::Struct`] type-checking is delegated to [`Value::type_check_struct_shallow`].
+    /// - For [`Value::List`] type-checking validates that it is [`DataType::List`] but then the
+    ///   elements in the list are skipped.
+    /// - For other primitive/scalar types [`Value`] is compared against the field [`DataType`]
+    ///   definition.
     pub fn type_check_shallow(
         &self,
         field: &Field,
@@ -202,11 +234,9 @@ impl Value {
         }
     }
 
-    /// Check if the value is NULL
+    /// Checks if a primitive value is null.
     ///
-    /// For scalar types `None` means the value is NULL.
-    /// A List type cannot be NULL, but it can be empty.
-    /// A Struct type cannot be NULL, but it can have no properties (be empty).
+    /// Always returns false for group(struct) or repeated(list) values.
     pub fn is_null(&self) -> bool {
         match self {
             Value::Boolean(b) => b.is_none(),
@@ -216,12 +246,19 @@ impl Value {
         }
     }
 
-    /// Performs shallow type checking of struct
+    /// Checks if all name, value pairs in a struct matches the given fields definitions.
     ///
-    /// - Duplicate names are not allowed.
-    /// - All required fields must be present.
-    /// - Names in values must exist in field definitions.
-    /// - Order of values can differ from field definitions.
+    /// Returns a [`TypeCheckError`] if,
+    /// - There exists duplicate names.
+    /// - If any required field is missing.
+    /// - If a name is not found in any of the field definitions.
+    ///
+    /// The ordering of name, value pairs does not have to match the order of the field definitions.
+    ///
+    /// # Parameters
+    /// - `path` - The path from root of the value used in [`TypeCheckError`]
+    /// - `props` - The name, value pairs extracted from [`Value::Struct`]
+    /// - `fields` - The field definitions extracted from [`DataType::Struct`]`
     pub fn type_check_struct_shallow(
         path: &PathVector,
         props: &Vec<(String, Value)>,
@@ -286,6 +323,7 @@ impl Value {
     }
 }
 
+/// TODO: add docs
 #[derive(Debug)]
 pub enum TypeCheckError {
     DataTypeMismatch {
@@ -314,6 +352,17 @@ pub enum TypeCheckError {
         props: Vec<(String, Value)>,
         fields: Vec<Field>,
     },
+}
+
+/// A depth-first iterator for [`Value`].
+///
+/// The iterator works like a cursor which visits every node in the [`Value`]
+/// tree in a depth-first order. It yields a tuple whose first element is a
+/// reference to the [`Value`] node, and the second element is a data structure
+/// representing the path from the root to the current node.
+#[derive(Debug)]
+pub struct DepthFirstValueIterator<'a> {
+    stack: Vec<(&'a Value, PathVector)>,
 }
 
 impl<'a> Iterator for DepthFirstValueIterator<'a> {
@@ -597,9 +646,9 @@ mod tests {
     #[test]
     fn test_builder_optional_fields() {
         let actual = ValueBuilder::default()
-            .optional_string("name", None::<&str>)
-            .optional_integer("id", None::<i64>)
-            .optional_boolean("enrolled", None::<bool>)
+            .string("name", None::<&str>)
+            .integer("id", None::<i64>)
+            .boolean("enrolled", None::<bool>)
             .repeated("groups", Vec::<i64>::new())
             .build();
 
