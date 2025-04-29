@@ -33,7 +33,7 @@ use denester::SchemaBuilder;
 /// }
 /// ```
 fn create_doc() -> Schema {
-    SchemaBuilder::new("Document", vec![])
+    SchemaBuilder::new("Document")
         .field(integer("DocId"))
         .field(optional_group(
             "Links",

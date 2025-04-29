@@ -1161,7 +1161,9 @@ mod tests {
 
     #[test]
     fn test_optional_field_contains_null() {
-        let schema = SchemaBuilder::new("optional_field", vec![optional_integer("x")]).build();
+        let schema = SchemaBuilder::new("optional_field")
+            .field(optional_integer("x"))
+            .build();
         let value = ValueBuilder::default().optional_integer("x", None).build();
         let parser = ValueParser::new(&schema, value.iter_depth_first());
         let parsed = parser
@@ -1177,7 +1179,9 @@ mod tests {
 
     #[test]
     fn test_top_level_optional_field_is_missing() {
-        let schema = SchemaBuilder::new("optional_field", vec![optional_integer("x")]).build();
+        let schema = SchemaBuilder::new("optional_field")
+            .field(optional_integer("x"))
+            .build();
         let value = ValueBuilder::default().build();
         let parser = ValueParser::new(&schema, value.iter_depth_first());
         let parsed = parser
@@ -1193,7 +1197,9 @@ mod tests {
 
     #[test]
     fn test_optional_field_contains_value() {
-        let schema = SchemaBuilder::new("optional_field", vec![optional_integer("x")]).build();
+        let schema = SchemaBuilder::new("optional_field")
+            .field(optional_integer("x"))
+            .build();
         let value = ValueBuilder::default()
             .optional_integer("x", Some(10))
             .build();
@@ -1211,7 +1217,9 @@ mod tests {
 
     #[test]
     fn test_required_field_contains_value() {
-        let schema = SchemaBuilder::new("required_field", vec![integer("x")]).build();
+        let schema = SchemaBuilder::new("required_field")
+            .field(integer("x"))
+            .build();
         let value = ValueBuilder::default().field("x", 10).build();
         let parser = ValueParser::new(&schema, value.iter_depth_first());
         let parsed = parser
@@ -1227,7 +1235,9 @@ mod tests {
 
     #[test]
     fn test_required_field_is_missing() {
-        let schema = SchemaBuilder::new("required_field", vec![integer("x")]).build();
+        let schema = SchemaBuilder::new("required_field")
+            .field(integer("x"))
+            .build();
         let value = ValueBuilder::default().build();
         let mut parser = ValueParser::new(&schema, value.iter_depth_first());
 
@@ -1239,7 +1249,9 @@ mod tests {
 
     #[test]
     fn test_required_field_contains_null() {
-        let schema = SchemaBuilder::new("required_field", vec![integer("x")]).build();
+        let schema = SchemaBuilder::new("required_field")
+            .field(integer("x"))
+            .build();
         let value = ValueBuilder::default()
             .field("x", Value::Integer(None))
             .build();
@@ -1255,7 +1267,9 @@ mod tests {
 
     #[test]
     fn test_repeated_scalar_field_is_empty() {
-        let schema = SchemaBuilder::new("repeated_field", vec![repeated_integer("xs")]).build();
+        let schema = SchemaBuilder::new("repeated_field")
+            .field(repeated_integer("xs"))
+            .build();
         let value = ValueBuilder::default()
             .repeated("xs", Vec::<Value>::new())
             .build();
@@ -1272,7 +1286,9 @@ mod tests {
 
     #[test]
     fn test_repeated_field_is_not_empty() {
-        let schema = SchemaBuilder::new("repeated_field", vec![repeated_integer("xs")]).build();
+        let schema = SchemaBuilder::new("repeated_field")
+            .field(repeated_integer("xs"))
+            .build();
         let value = ValueBuilder::default()
             .repeated("xs", vec![1, 2, 3])
             .build();
@@ -1299,7 +1315,9 @@ mod tests {
     /// TODO: Is there a way to distinguish between the encoding of an `[]` vs `[null]`?
     #[test]
     fn test_repeated_field_contains_nulls() {
-        let schema = SchemaBuilder::new("repeated_field", vec![repeated_integer("xs")]).build();
+        let schema = SchemaBuilder::new("repeated_field")
+            .field(repeated_integer("xs"))
+            .build();
         let value = Value::Struct(vec![(
             "xs".to_string(),
             Value::List(vec![
@@ -1329,7 +1347,9 @@ mod tests {
     }
     #[test]
     fn test_top_level_repeated_field_is_missing() {
-        let schema = SchemaBuilder::new("repeated_field", vec![repeated_integer("xs")]).build();
+        let schema = SchemaBuilder::new("repeated_field")
+            .field(repeated_integer("xs"))
+            .build();
         let value = ValueBuilder::default().build();
         let mut parser = ValueParser::new(&schema, value.iter_depth_first());
 
@@ -1343,16 +1363,12 @@ mod tests {
 
     #[test]
     fn test_simple_struct() {
-        let schema = SchemaBuilder::new(
-            "user",
-            vec![
-                string("name"),
-                integer("id"),
-                bool("enrolled"),
-                repeated_integer("groups"),
-            ],
-        )
-        .build();
+        let schema = SchemaBuilder::new("user")
+            .field(string("name"))
+            .field(integer("id"))
+            .field(bool("enrolled"))
+            .field(repeated_integer("groups"))
+            .build();
 
         let value = ValueBuilder::default()
             .field("name", "Patricia")
@@ -1394,7 +1410,7 @@ mod tests {
         //   required int a,
         //   optional int b,
         //   optional int c, }
-        let schema = SchemaBuilder::new("doc", vec![])
+        let schema = SchemaBuilder::new("doc")
             .field(integer("a"))
             .field(optional_integer("b"))
             .field(optional_integer("c"))

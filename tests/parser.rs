@@ -40,7 +40,7 @@ mod basic_parsing {
 
     #[test]
     fn test_nested_struct() {
-        let schema = SchemaBuilder::new("nested_struct", vec![])
+        let schema = SchemaBuilder::new("nested_struct")
             .field(required_group(
                 "a",
                 vec![
@@ -103,7 +103,7 @@ mod basic_parsing {
         //   optional group Links {         // def +1
         //      repeated int Backward;      // def +1, rep +1
         //      repeated int Forward; }}    // def +1, rep +1
-        let schema = SchemaBuilder::new("Doc", vec![])
+        let schema = SchemaBuilder::new("Doc")
             .field(optional_group(
                 "Links",
                 vec![repeated_integer("Backward"), repeated_integer("Forward")],
@@ -168,14 +168,12 @@ mod basic_parsing {
         //  repeated group Name {           // def +1, rep +1
         //    repeated group Language {     // def +1, rep +1
         //      required string Code; }}}
-        let schema = SchemaBuilder::new(
-            "doc",
-            vec![repeated_group(
+        let schema = SchemaBuilder::new("doc")
+            .field(repeated_group(
                 "Name",
                 vec![repeated_group("Language", vec![string("Code")])],
-            )],
-        )
-        .build();
+            ))
+            .build();
 
         // Name[0]: { Language: [{Code: 'en-us'}, {Code: 'en'}] }
         // Name[1]: {}                                              // Missing language group
@@ -267,7 +265,7 @@ mod missing_fields {
         //      required int x
         //      optional int y },   // def +1
         //  required int b }
-        let schema = SchemaBuilder::new("doc", vec![])
+        let schema = SchemaBuilder::new("doc")
             .field(required_group(
                 "a",
                 vec![integer("x"), optional_integer("y")],
@@ -318,7 +316,7 @@ mod missing_fields {
         //      required int x
         //      optional int y },   // def +1
         //  optional int b }        // def +1
-        let schema = SchemaBuilder::new("doc", vec![])
+        let schema = SchemaBuilder::new("doc")
             .field(required_group(
                 "a",
                 vec![integer("x"), optional_integer("y")],
@@ -374,7 +372,7 @@ mod missing_fields {
         //      required int x
         //      optional int y },   // def +1
         //  required int b }
-        let schema = SchemaBuilder::new("doc", vec![])
+        let schema = SchemaBuilder::new("doc")
             .field(optional_group(
                 "a",
                 vec![integer("x"), optional_integer("y")],
@@ -425,7 +423,7 @@ mod missing_fields {
         //          optional group c {          // def +1
         //             required int x;
         //             optional int y; }}}}     // def +1
-        let schema = SchemaBuilder::new("doc", vec![])
+        let schema = SchemaBuilder::new("doc")
             .field(optional_group(
                 "a",
                 vec![required_group(
@@ -492,7 +490,7 @@ mod repeated_fields {
         //  repeated group a {      // def +1, rep +1
         //      required int x;
         //      optional int y; }}  // def +1
-        let schema = SchemaBuilder::new("doc", vec![])
+        let schema = SchemaBuilder::new("doc")
             .field(repeated_group(
                 "a",
                 vec![integer("x"), optional_integer("y")],
@@ -562,7 +560,7 @@ mod repeated_fields {
         //      optional int x },   // def +1
         //  required group b {
         //      optional int y }}   // def +1
-        let schema = SchemaBuilder::new("doc", vec![])
+        let schema = SchemaBuilder::new("doc")
             .field(required_group("a", vec![optional_integer("x")]))
             .field(required_group("b", vec![optional_integer("y")]))
             .build();

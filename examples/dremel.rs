@@ -10,14 +10,12 @@ use denester::{SchemaBuilder, ValueBuilder, ValueParser};
 ///     }
 /// }
 fn main() {
-    let schema = SchemaBuilder::new(
-        "doc",
-        vec![repeated_group(
+    let schema = SchemaBuilder::new("doc")
+        .field(repeated_group(
             "Name",
             vec![repeated_group("Language", vec![string("Code")])],
-        )],
-    )
-    .build();
+        ))
+        .build();
 
     let value = ValueBuilder::default()
         .repeated(

@@ -90,17 +90,24 @@ impl fmt::Display for Schema {
     }
 }
 
-#[derive(Debug)]
+/// Ergonomic builder pattern API for creating nested schema definitions.
+#[derive(Debug, Clone)]
 pub struct SchemaBuilder {
     name: String,
     fields: Vec<Field>,
 }
 
 impl SchemaBuilder {
-    pub fn new(name: impl Into<String>, fields: Vec<Field>) -> Self {
+    /// Creates a new `SchemaBuilder` with a given name and no fields.
+    ///
+    /// Fields can be added using [`SchemaBuilder::field`].
+    ///
+    /// # Parameters
+    /// * `name` - The name for the schema being built.
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            fields,
+            fields: Vec::new(),
         }
     }
 

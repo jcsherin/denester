@@ -287,14 +287,14 @@ mod tests {
 
     #[test]
     fn test_empty_field_path_iterator() {
-        let schema = SchemaBuilder::new("empty", vec![]).build();
+        let schema = SchemaBuilder::new("empty").build();
         let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
         assert_eq!(paths.len(), 0);
     }
 
     #[test]
     fn test_basic_field_path_iterator() {
-        let schema = SchemaBuilder::new("test", vec![])
+        let schema = SchemaBuilder::new("test")
             .field(integer("id"))
             .field(string("name"))
             .field(bool("active"))
@@ -315,7 +315,7 @@ mod tests {
 
     #[test]
     fn test_nested_field_path_iterator() {
-        let schema = SchemaBuilder::new("test", vec![])
+        let schema = SchemaBuilder::new("test")
             .field(required_group(
                 "user",
                 vec![integer("id"), string("name"), bool("active")],
@@ -337,9 +337,7 @@ mod tests {
 
     #[test]
     fn test_basic_field_path_metadata() {
-        let schema = SchemaBuilder::new("test", vec![])
-            .field(integer("id"))
-            .build();
+        let schema = SchemaBuilder::new("test").field(integer("id")).build();
         let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
 
         let id_metadata = PathMetadata::new(&schema, paths[0].clone());
@@ -352,7 +350,7 @@ mod tests {
 
     #[test]
     fn test_nested_field_path_metadata() {
-        let schema = SchemaBuilder::new("test", vec![])
+        let schema = SchemaBuilder::new("test")
             .field(required_group("user", vec![string("name")]))
             .build();
         let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
