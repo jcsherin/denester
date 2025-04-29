@@ -182,7 +182,7 @@ impl Value {
             (Value::Boolean(_), DataType::Boolean)
             | (Value::Integer(_), DataType::Integer)
             | (Value::String(_), DataType::String) => {
-                if field.is_required() && self.is_null() {
+                if !field.is_optional() && self.is_null() {
                     Err(TypeCheckError::RequiredFieldIsNull {
                         path: path.clone(),
                         field: field.clone(),
@@ -252,7 +252,7 @@ impl Value {
         let mut required_fields = HashSet::new();
         for field in fields {
             field_names.insert(field.name());
-            if field.is_required() {
+            if !field.is_optional() {
                 required_fields.insert(field.name());
             }
         }

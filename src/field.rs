@@ -1,31 +1,60 @@
-use std::fmt;
-use std::fmt::Formatter;
-use std::fmt::Write;
+//! Defines the building blocks for defining schemas: [`Field`] and [`DataType`]
 
-#[derive(Debug, PartialEq, Clone)]
+use std::fmt::{self, Formatter, Write};
+
+/// Represents the primitive, nested and repeated types from the Dremel data model
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum DataType {
+    /// Boolean type (true/false)
     Boolean,
+    /// Integer type (physical representation maybe i64 type)
     Integer,
+    /// String type (UTF-8)
     String,
+    /// Repeated type represented by a list of elements. The inner data type of
+    /// all list elements are the same.
     List(Box<DataType>),
+    /// A nested structure (group/record) containing named fields.
     Struct(Vec<Field>),
 }
 
 impl DataType {
+    /// Checks if data type is a [`DataType::List`]
     pub fn is_list(&self) -> bool {
         matches!(self, DataType::List(_))
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+/// Represents a named schema element, its data type and if the field is
+/// optional.
+///
+/// For a repeated field which is represented by [`DataType::List`], the
+/// nullable is implicitly `true`. This matches the semantics where a
+/// repeated field can be missing or empty.
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Field {
     name: String,
     data_type: DataType,
+    /// Indicates if this field is explicitly marked as optional. This
+    /// flag is independent of whether a field is repeated. Please use
+    /// `is_optional()` to check the effective optionality of nullable
+    /// or repeated fields.
     nullable: bool,
 }
 
 impl Field {
+    /// Creates a field definition.
+    ///
+    /// # Parameters
+    /// * `name` - Name of the field.
+    /// * `data_type` - The [`DataType`] of the field.
+    /// * `nullable` - `true` if the field is explicitly optional. This is
+    ///     independent of repeated fields which implicitly optional regardless
+    ///     of the internal state of this field.
     pub fn new(name: impl Into<String>, data_type: DataType, nullable: bool) -> Self {
+        // Stores the user provided nullable flag directly. The caller is
+        // expected to use `is_optional()` which also handles repeated
+        // fields.
         Field {
             name: name.into(),
             data_type,
@@ -33,24 +62,33 @@ impl Field {
         }
     }
 
+    /// Returns the name of the field.
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Returns a reference to the [`DataType`] of the field.
+    ///
+    /// This is an immutable read-only reference so the caller will not be able
+    /// to modify the internal state of a field. The primary reason though is
+    /// efficiency. When describing complex nested data types this prevents any
+    /// unpredictable memory allocations for the caller.
     pub fn data_type(&self) -> &DataType {
         &self.data_type
     }
 
+    /// Checks if a field is either explicitly optional or repeated.
+    ///
+    /// Returns `true` if the field was marked `nullable` during creation
+    /// OR if it is a [`DataType::List`] (repeated). Required fields are
+    /// neither nullable nor repeated.
     pub fn is_optional(&self) -> bool {
-        self.data_type.is_list() || self.nullable
+        self.is_repeated() || self.nullable
     }
 
+    /// Checks if a field is repeated: [`DataType::List`]
     pub fn is_repeated(&self) -> bool {
         self.data_type.is_list()
-    }
-
-    pub fn is_required(&self) -> bool {
-        !self.is_optional() && !self.is_repeated()
     }
 }
 
