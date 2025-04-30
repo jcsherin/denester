@@ -1,10 +1,10 @@
-use denester::common::{DefinitionLevel, RepetitionLevel};
 use denester::parser::StripedColumnValue;
 use denester::schema::{
     integer, optional_group, optional_integer, repeated_group, repeated_integer, required_group,
     string,
 };
 use denester::value::Value;
+use denester::{DefinitionLevel, RepetitionLevel};
 use denester::{SchemaBuilder, ValueBuilder, ValueParser};
 
 // Helper function

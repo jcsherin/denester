@@ -1,7 +1,7 @@
-use crate::common::{DefinitionLevel, RepetitionLevel};
 use crate::field::{DataType, Field};
-use crate::path_vector::{PathVector, PathVectorSlice};
+use crate::path_vector::PathVector;
 use crate::schema::Schema;
+use crate::{DefinitionLevel, RepetitionLevel};
 use std::fmt::{Display, Formatter};
 use std::slice::Iter;
 
@@ -12,7 +12,7 @@ struct FieldLevel<'a> {
 }
 
 impl<'a> FieldLevel<'a> {
-    fn new(iter: Iter<'a, Field>, path: Vec<String>) -> Self {
+    fn new(iter: Iter<'a, Field>, path: PathVector) -> Self {
         Self { iter, path }
     }
 }
@@ -24,15 +24,15 @@ pub struct FieldPath {
 }
 
 impl FieldPath {
-    pub fn new(field: Field, path: PathVector) -> Self {
+    pub(crate) fn new(field: Field, path: PathVector) -> Self {
         Self { field, path }
     }
 
-    pub fn field(&self) -> &Field {
+    pub(crate) fn field(&self) -> &Field {
         &self.field
     }
 
-    pub fn path(&self) -> PathVectorSlice {
+    pub(crate) fn path(&self) -> &PathVector {
         &self.path
     }
 }
@@ -51,7 +51,10 @@ pub struct FieldPathIterator<'a> {
 impl<'a> FieldPathIterator<'a> {
     pub fn new(schema: &'a Schema) -> Self {
         Self {
-            levels: vec![FieldLevel::new(schema.fields().iter(), vec![])],
+            levels: vec![FieldLevel::new(
+                schema.fields().iter(),
+                PathVector::default(),
+            )],
         }
     }
 }
@@ -150,7 +153,7 @@ impl PathMetadata {
         }
     }
 
-    pub fn path(&self) -> PathVectorSlice {
+    pub fn path(&self) -> &[String] {
         self.field_path.path()
     }
 
@@ -179,7 +182,7 @@ impl PathMetadata {
         let mut repetition_level = 0;
 
         let mut current_fields = schema.fields();
-        for name in field_path.path() {
+        for name in field_path.path().iter() {
             let field = current_fields
                 .iter()
                 .find(|f| f.name() == name)
@@ -259,16 +262,13 @@ impl Iterator for PathMetadataIterator<'_> {
 mod tests {
     use crate::field::{DataType, Field};
     use crate::field_path::{FieldPath, FieldPathIterator, PathMetadata};
+    use crate::path_vector::PathVector;
     use crate::schema::{bool, integer, required_group, string, SchemaBuilder};
 
     #[test]
     fn test_field_path() {
         let email = Field::new("email", DataType::String, true);
-        let path = vec![
-            String::from("customer"),
-            String::from("address"),
-            String::from("email"),
-        ];
+        let path = PathVector::from(&["customer", "address", "email"][..]);
 
         let actual = FieldPath::new(email.clone(), path);
 
@@ -296,13 +296,12 @@ mod tests {
         let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
         assert_eq!(paths.len(), 3);
 
-        assert_eq!(paths[0].path(), vec!["id"]);
+        assert_eq!(*paths[0].path(), PathVector::from(&["id"][..]));
+        assert_eq!(*paths[1].path(), PathVector::from(&["name"][..]));
+        assert_eq!(*paths[2].path(), PathVector::from(&["active"][..]));
+
         assert_eq!(paths[0].field.data_type(), &DataType::Integer);
-
-        assert_eq!(paths[1].path(), vec!["name"]);
         assert_eq!(paths[1].field.data_type(), &DataType::String);
-
-        assert_eq!(paths[2].path(), vec!["active"]);
         assert_eq!(paths[2].field.data_type(), &DataType::Boolean);
     }
 
@@ -318,13 +317,12 @@ mod tests {
         let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
         assert_eq!(paths.len(), 3);
 
-        assert_eq!(paths[0].path(), vec!["user", "id"]);
+        assert_eq!(*paths[0].path(), PathVector::from(&["user", "id"][..]));
+        assert_eq!(*paths[1].path(), PathVector::from(&["user", "name"][..]));
+        assert_eq!(*paths[2].path(), PathVector::from(&["user", "active"][..]));
+
         assert_eq!(paths[0].field.data_type(), &DataType::Integer);
-
-        assert_eq!(paths[1].path(), vec!["user", "name"]);
         assert_eq!(paths[1].field.data_type(), &DataType::String);
-
-        assert_eq!(paths[2].path(), vec!["user", "active"]);
         assert_eq!(paths[2].field.data_type(), &DataType::Boolean);
     }
 
@@ -336,7 +334,7 @@ mod tests {
         let id_metadata = PathMetadata::new(&schema, paths[0].clone());
 
         assert_eq!(*id_metadata.field(), integer("id"));
-        assert_eq!(id_metadata.path(), vec!["id"]);
+        assert_eq!(id_metadata.path(), &["id"]);
         assert_eq!(id_metadata.definition_level, 0);
         assert_eq!(id_metadata.repetition_level, 0);
     }
@@ -351,7 +349,7 @@ mod tests {
         let path_metadata = PathMetadata::new(&schema, paths[0].clone());
 
         assert_eq!(*path_metadata.field(), string("name"));
-        assert_eq!(path_metadata.path(), vec!["user", "name"]);
+        assert_eq!(path_metadata.path(), &["user", "name"]);
         assert_eq!(path_metadata.definition_level, 0);
         assert_eq!(path_metadata.repetition_level, 0);
     }

@@ -9,8 +9,8 @@
 //! [Dremel: Interactive Analysis of Web-Scale Datasets](https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36632.pdf).
 
 #![warn(missing_debug_implementations)]
+// #![warn(missing_docs)]
 
-pub mod common;
 pub mod field;
 pub mod field_path;
 pub mod parser;
@@ -21,3 +21,12 @@ pub mod value;
 pub use self::parser::ValueParser;
 pub use self::schema::SchemaBuilder;
 pub use self::value::ValueBuilder;
+
+/// Represents the path to a value within a nested structure.
+pub type ValuePath = Vec<String>;
+/// Represents the computed definition level of a flattened value
+pub type DefinitionLevel = u8;
+/// Represents the computed repetition level of a flattened value
+pub type RepetitionLevel = u8;
+/// Represents the distinct repeated fields leading to a flattened value
+pub type RepetitionDepth = u8;

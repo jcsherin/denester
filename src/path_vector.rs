@@ -1,47 +1,73 @@
-// TODO: Convert `PathVector` to newtype instead of a type alias
-pub(crate) type PathVector = Vec<String>;
-pub(crate) type PathVectorSlice<'a> = &'a [String];
+//! Internal representation of a path as a sequence of strings.
 
-pub(crate) trait PathVectorExt {
-    fn format(&self) -> String;
-    fn is_root(&self) -> bool;
-    fn append_name(&self, name: String) -> PathVector;
-    fn from_slice(slice: PathVectorSlice) -> Self;
-    fn root() -> Self;
-    fn depth(&self) -> usize;
-    fn prefix(&self, len: usize) -> PathVector;
+use std::ops::{Deref, DerefMut};
+
+/// Provides a type-safe representation for paths in a nested value and
+/// path specific methods.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub(crate) struct PathVector(Vec<String>);
+
+impl Deref for PathVector {
+    type Target = Vec<String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
-impl PathVectorExt for PathVector {
-    fn format(&self) -> String {
-        if self.is_empty() {
-            ".top-level".to_string()
-        } else {
-            self.join(".")
-        }
+impl DerefMut for PathVector {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
-    fn is_root(&self) -> bool {
+}
+
+impl From<&[&str]> for PathVector {
+    fn from(slice: &[&str]) -> Self {
+        PathVector(slice.iter().map(|s| s.to_string()).collect())
+    }
+}
+
+impl From<&[String]> for PathVector {
+    fn from(slice: &[String]) -> Self {
+        PathVector(slice.to_vec())
+    }
+}
+
+impl From<Vec<String>> for PathVector {
+    fn from(vec: Vec<String>) -> Self {
+        PathVector(vec)
+    }
+}
+
+impl PathVector {
+    // Formats the path as dot-separated components.
+    // Returns a special string for the root path.
+    // TODO: enable after extracting iterator item struct and removing ValuePath alias
+    // pub fn format(&self) -> String {
+    //     if self.is_empty() {
+    //         "<root>".to_string()
+    //     } else {
+    //         self.join(".")
+    //     }
+    // }
+
+    /// Checks if path represents the root (is empty)
+    pub fn is_root(&self) -> bool {
         self.is_empty()
     }
 
-    /// Creates a new PathVector by appending the input field name
-    fn append_name(&self, name: String) -> PathVector {
-        self.iter().cloned().chain(std::iter::once(name)).collect()
+    /// Creates a new `PathVector` by appending a path component.
+    pub fn append_name(&self, name: String) -> Self {
+        PathVector(self.iter().cloned().chain(std::iter::once(name)).collect())
     }
 
-    fn from_slice(slice: PathVectorSlice) -> Self {
-        slice.to_vec()
-    }
-
-    fn root() -> Self {
-        Self::default()
-    }
-
-    fn depth(&self) -> usize {
+    /// Returns the count of components(depth) in a path
+    pub fn depth(&self) -> usize {
         self.len()
     }
 
-    fn prefix(&self, len: usize) -> PathVector {
-        self.iter().take(len).cloned().collect()
+    /// Creates a new `PathVector` containing the first `len` components.
+    pub fn prefix(&self, len: usize) -> PathVector {
+        PathVector(self.iter().take(len).cloned().collect())
     }
 }

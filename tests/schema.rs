@@ -1,5 +1,5 @@
 use denester::field::{DataType, Field};
-use denester::field_path::{FieldPathIterator, PathMetadataIterator};
+use denester::field_path::PathMetadataIterator;
 use denester::schema::{
     integer, optional_group, optional_string, repeated_group, repeated_integer, string, Schema,
 };
@@ -243,37 +243,37 @@ mod schema_validation {
 }
 
 mod schema_iteration {
-    use super::*;
 
-    /// Paths in Document,
-    ///     1. DocId
-    ///     2. Links.Backward
-    ///     3. Links.Forward
-    ///     4. Name.Language.Code
-    ///     5. Name.Language.Country
-    ///     6. Name.Url
-    /// ```
-    #[test]
-    fn test_field_path_iterator() {
-        let doc = create_doc();
-        let paths = FieldPathIterator::new(&doc).collect::<Vec<_>>();
-
-        assert_eq!(paths.len(), 6);
-
-        assert_eq!(paths[0].path(), vec!["DocId"]);
-        assert_eq!(paths[1].path(), vec!["Links", "Backward"]);
-        assert_eq!(paths[2].path(), vec!["Links", "Forward"]);
-        assert_eq!(paths[3].path(), vec!["Name", "Language", "Code"]);
-        assert_eq!(paths[4].path(), vec!["Name", "Language", "Country"]);
-        assert_eq!(paths[5].path(), vec!["Name", "Url"]);
-
-        assert_eq!(paths[0].field().name(), "DocId");
-        assert_eq!(paths[1].field().name(), "Backward");
-        assert_eq!(paths[2].field().name(), "Forward");
-        assert_eq!(paths[3].field().name(), "Code");
-        assert_eq!(paths[4].field().name(), "Country");
-        assert_eq!(paths[5].field().name(), "Url");
-    }
+    // Paths in Document,
+    //     1. DocId
+    //     2. Links.Backward
+    //     3. Links.Forward
+    //     4. Name.Language.Code
+    //     5. Name.Language.Country
+    //     6. Name.Url
+    // ```
+    // TODO: Extract `create_doc()` to Schema and convert this to a unit test inside field_path
+    // #[test]
+    // fn test_field_path_iterator() {
+    //     let doc = create_doc();
+    //     let paths = FieldPathIterator::new(&doc).collect::<Vec<_>>();
+    //
+    //     assert_eq!(paths.len(), 6);
+    //
+    //     assert_eq!(paths[0].path(), vec!["DocId"]);
+    //     assert_eq!(paths[1].path(), vec!["Links", "Backward"]);
+    //     assert_eq!(paths[2].path(), vec!["Links", "Forward"]);
+    //     assert_eq!(paths[3].path(), vec!["Name", "Language", "Code"]);
+    //     assert_eq!(paths[4].path(), vec!["Name", "Language", "Country"]);
+    //     assert_eq!(paths[5].path(), vec!["Name", "Url"]);
+    //
+    //     assert_eq!(paths[0].field().name(), "DocId");
+    //     assert_eq!(paths[1].field().name(), "Backward");
+    //     assert_eq!(paths[2].field().name(), "Forward");
+    //     assert_eq!(paths[3].field().name(), "Code");
+    //     assert_eq!(paths[4].field().name(), "Country");
+    //     assert_eq!(paths[5].field().name(), "Url");
+    // }
 }
 
 mod schema_metadata {

@@ -1,13 +1,13 @@
 //! Implements the core logic for parsing nested values according to a schema
 //! and producing a flattened representation suitable for columnar storage.
 
-use crate::common::{DefinitionLevel, RepetitionDepth, RepetitionLevel};
 use crate::field::{DataType, Field};
 use crate::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
 use crate::parser::ParseError::{RequiredFieldIsNull, RequiredFieldsAreMissing};
-use crate::path_vector::{PathVector, PathVectorExt, PathVectorSlice};
+use crate::path_vector::PathVector;
 use crate::schema::Schema;
 use crate::value::{DepthFirstValueIterator, TypeCheckError, Value};
+use crate::{DefinitionLevel, RepetitionDepth, RepetitionLevel};
 use std::collections::{HashSet, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
@@ -30,7 +30,7 @@ pub enum ParseError<'a> {
         fields: Vec<Field>,
     },
     MissingListContext {
-        path: PathVector,
+        path: Vec<String>,
     },
     ListItemNonNullable {
         path: Vec<String>,
@@ -59,11 +59,11 @@ pub enum ParseError<'a> {
     RootIsNotStruct,
     MissingFieldsContext,
     MissingLevelContext {
-        path: PathVector,
+        path: Vec<String>,
     },
     RequiredFieldsAreMissing {
         missing: Vec<String>,
-        path: PathVector,
+        path: Vec<String>,
     },
     ListTypeMismatch {
         path: Vec<String>,
@@ -77,10 +77,13 @@ impl From<TypeCheckError> for ParseError<'_> {
                 todo!()
             }
             TypeCheckError::RequiredFieldIsNull { path, field } => RequiredFieldIsNull {
-                field_path: FieldPath::new(field, path.to_vec()),
+                field_path: FieldPath::new(field, path.into()),
             },
             TypeCheckError::RequiredFieldsAreMissing { missing, path } => {
-                RequiredFieldsAreMissing { missing, path }
+                RequiredFieldsAreMissing {
+                    missing,
+                    path: path.to_vec(),
+                }
             }
             TypeCheckError::StructSchemaMismatch { .. } => {
                 todo!()
@@ -123,14 +126,14 @@ impl Display for ParseError<'_> {
                 write!(
                     f,
                     "Level context missing for computing levels. Path: {}",
-                    path.format()
+                    path.join(".")
                 )
             }
             ParseError::MissingStructContext { path } => {
                 write!(
                     f,
                     "Missing struct field definitions for path: {}",
-                    path.format()
+                    path.join(".")
                 )
             }
             ParseError::ListItemNonNullable { path, field } => {
@@ -138,7 +141,7 @@ impl Display for ParseError<'_> {
                     f,
                     "This list does not allow null values. field: {}, path: {}",
                     field,
-                    path.format()
+                    path.join(".")
                 )
             }
             ParseError::PathIsEmpty { value } => {
@@ -180,37 +183,26 @@ impl Display for ParseError<'_> {
                     f,
                     "Required fields missing: {} in path: {}",
                     missing.join(", "),
-                    path.format()
+                    path.join(".")
                 )
             }
             ParseError::ListTypeMismatch { path } => {
                 write!(
                     f,
                     "Type checking failed for list element: {}",
-                    path.format()
+                    path.join(".")
                 )
             }
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct LevelContext {
     definition_level: DefinitionLevel,
     repetition_depth: RepetitionDepth,
     repetition_level: RepetitionLevel,
     path: PathVector,
-}
-
-impl Default for LevelContext {
-    fn default() -> Self {
-        Self {
-            definition_level: 0,
-            repetition_depth: 0,
-            repetition_level: 0,
-            path: PathVector::root(),
-        }
-    }
 }
 
 impl LevelContext {
@@ -384,10 +376,10 @@ impl ValueParserState {
             Self {
                 struct_context_stack: vec![StructContext::new(
                     schema.fields().to_vec(),
-                    PathVector::root(),
+                    PathVector::default(),
                 )],
                 list_stack: vec![],
-                prev_path: PathVector::root(),
+                prev_path: PathVector::default(),
                 computed_levels: vec![LevelContext::default()],
                 missing_paths_buffer: DequeStack::new(),
             }
@@ -403,12 +395,12 @@ impl ValueParserState {
     /// When a level transition is detected, this method prunes the internal stacks. A level
     /// transition occurs when the traversal path changes direction from going downwards to either
     /// sideways or upwards in the value tree.
-    fn transition_to(&mut self, curr_path: PathVectorSlice) {
+    fn transition_to(&mut self, curr_path: &PathVector) {
         self.prune_stacks(curr_path);
 
         // Saves the current path for the next traversal step. Each call to this method requires the
         // previous path to properly identify level transitions.
-        self.prev_path = PathVector::from(curr_path);
+        self.prev_path = curr_path.clone();
     }
 
     /// Removes stack frames when the traversal backtracks to ancestors or siblings.
@@ -421,7 +413,7 @@ impl ValueParserState {
     ///     - list iterator stack: tracks position of repeated item during traversal
     ///
     /// After pruning, the top of all the stacks will align with the currently visited node.
-    fn prune_stacks(&mut self, curr_path: PathVectorSlice) {
+    fn prune_stacks(&mut self, curr_path: &PathVector) {
         // Skip pruning if we are going deeper into the tree (not backtracking). A level transition
         // occurs only when moving to either siblings or ancestors.
         if curr_path.len() > self.prev_path.len() {
@@ -515,13 +507,13 @@ impl<'a> ValueParser<'a> {
             .current_struct_context()
             .ok_or_else(|| ParseError::FieldNameLookupMissingContext {
                 field_name: field_name.to_string(),
-                path: path.clone(),
+                path: path.to_vec(),
             })
             .and_then(|ctx| {
                 ctx.find_field(field_name)
                     .ok_or_else(|| ParseError::FieldNameLookupFailed {
                         field_name: field_name.to_string(),
-                        path: path.clone(),
+                        path: path.to_vec(),
                         ctx: ctx.clone(),
                     })
             })
@@ -538,11 +530,13 @@ impl<'a> ValueParser<'a> {
         field: &Field,
         path: &PathVector,
     ) -> Result<(), ParseError<'a>> {
-        let parent_ctx = self
-            .state
-            .computed_levels
-            .last()
-            .ok_or_else(|| ParseError::MissingLevelContext { path: path.clone() })?;
+        let parent_ctx =
+            self.state
+                .computed_levels
+                .last()
+                .ok_or_else(|| ParseError::MissingLevelContext {
+                    path: path.to_vec(),
+                })?;
 
         let new_ctx = parent_ctx.with_field(field, path);
         self.state.computed_levels.push(new_ctx);
@@ -622,19 +616,20 @@ impl<'a> ValueParser<'a> {
         &mut self,
         missing_path: &PathMetadata,
     ) -> StripedColumnResult<'a> {
-        self.state.transition_to(missing_path.path());
+        self.state
+            .transition_to(&PathVector::from(missing_path.path()));
 
         let data_type = missing_path.field().data_type();
         match data_type {
             DataType::Boolean | DataType::Integer | DataType::String => self
                 .get_column_from_scalar(
-                    &PathVector::from_slice(missing_path.path()),
+                    &PathVector::from(missing_path.path()),
                     &Value::create_null_or_empty(data_type),
                 ),
             DataType::List(inner) => match inner.as_ref() {
                 DataType::Boolean | DataType::Integer | DataType::String => self
                     .get_column_from_scalar(
-                        &PathVector::from_slice(missing_path.path()),
+                        &PathVector::from(missing_path.path()),
                         &Value::create_null_or_empty(inner.as_ref()),
                     ),
                 DataType::List(_) => {
@@ -655,11 +650,13 @@ impl<'a> ValueParser<'a> {
         path: &PathVector,
         value: &Value,
     ) -> Result<StripedColumnValue, ParseError<'a>> {
-        let level_context = self
-            .state
-            .computed_levels
-            .last()
-            .ok_or(ParseError::MissingLevelContext { path: path.clone() })?;
+        let level_context =
+            self.state
+                .computed_levels
+                .last()
+                .ok_or(ParseError::MissingLevelContext {
+                    path: path.to_vec(),
+                })?;
 
         Ok(StripedColumnValue::new(
             value.clone(),
@@ -678,7 +675,7 @@ impl<'a> ValueParser<'a> {
     ) -> Result<StripedColumnValue, ParseError<'a>> {
         if !field.is_optional() && value.is_null() {
             return Err(ParseError::ListItemNonNullable {
-                path: path.clone(),
+                path: path.to_vec(),
                 field: field.data_type().clone(),
             });
         }
@@ -707,12 +704,20 @@ impl<'a> ValueParser<'a> {
     /// The definition level of a list item is independent of its index.
     fn get_level_context(&self, path: &PathVector) -> Result<LevelContext, ParseError<'a>> {
         let list_context = match self.state.list_stack.last() {
-            None => return Err(ParseError::MissingListContext { path: path.clone() }),
+            None => {
+                return Err(ParseError::MissingListContext {
+                    path: path.to_vec(),
+                })
+            }
             Some(ctx) => ctx,
         };
 
         let level_context = match self.state.computed_levels.last() {
-            None => return Err(ParseError::MissingLevelContext { path: path.clone() }),
+            None => {
+                return Err(ParseError::MissingLevelContext {
+                    path: path.to_vec(),
+                })
+            }
             Some(ctx) => ctx,
         };
 
@@ -736,7 +741,11 @@ impl<'a> ValueParser<'a> {
     /// Advances the list iterator position by one
     fn advance_list_iterator(&mut self, path: &PathVector) -> Result<(), ParseError<'a>> {
         let ctx = match self.state.list_stack.last_mut() {
-            None => return Err(ParseError::MissingListContext { path: path.clone() }),
+            None => {
+                return Err(ParseError::MissingListContext {
+                    path: path.to_vec(),
+                })
+            }
             Some(ctx) => ctx,
         };
 
@@ -979,7 +988,7 @@ impl<'a> Iterator for ValueParser<'a> {
 
                                 if !self.is_matching_list_iterator_context(&field) {
                                     return Some(Err(ParseError::MissingListContext {
-                                        path: path.clone(),
+                                        path: path.to_vec(),
                                     }));
                                 }
 
@@ -1082,7 +1091,7 @@ impl<'a> Iterator for ValueParser<'a> {
                                             }
                                             _ => {
                                                 return Some(Err(ParseError::ListTypeMismatch {
-                                                    path: path.clone(),
+                                                    path: path.to_vec(),
                                                 }))
                                             }
                                         }
@@ -1148,8 +1157,8 @@ impl<'a> Iterator for ValueParser<'a> {
                 // Example 4: `a` -> `a.b`
                 // Here as there is no backtracking transition, we do not have to process any
                 // missing paths.
-                if path.depth() < self.state.prev_path.depth() {
-                    let prefix_path = self.state.prev_path.prefix(path.depth());
+                if path.len() < self.state.prev_path.depth() {
+                    let prefix_path = self.state.prev_path.prefix(path.len());
                     let mut missing_paths = vec![];
 
                     while let Some(missing) = self.state.missing_paths_buffer.peek() {
@@ -1166,7 +1175,8 @@ impl<'a> Iterator for ValueParser<'a> {
                     self.work_queue.extend(missing_paths);
                 }
 
-                self.work_queue.push_back(WorkItem::Value(value, path));
+                self.work_queue
+                    .push_back(WorkItem::Value(value, path.into()));
             } else {
                 // Once the value iterator is exhausted all remaining missing paths which were
                 // buffered earlier is added to the work queue for processing.
@@ -1272,7 +1282,7 @@ mod tests {
 
         assert!(matches!(parser.next().unwrap(),
                 Err(RequiredFieldsAreMissing { missing, path })
-                if path.is_root() && missing.len() == 1 && missing[0] == *"x"));
+                if path.is_empty() && missing.len() == 1 && missing[0] == *"x"));
         assert!(parser.next().is_none());
     }
 
@@ -1288,7 +1298,7 @@ mod tests {
 
         assert!(matches!(parser.next().unwrap(),
             Err(RequiredFieldIsNull { field_path })
-            if field_path.path() == ["x"] && field_path.field() == &integer("x")
+            if *field_path.path() == PathVector::from(&["x"][..]) && field_path.field() == &integer("x")
         ));
         // TODO: add a test which contains other fields after the required field
         assert!(parser.next().is_none());

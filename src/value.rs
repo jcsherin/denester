@@ -2,6 +2,7 @@
 
 use crate::field::{DataType, Field};
 use crate::path_vector::PathVector;
+use crate::ValuePath;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Formatter;
@@ -205,7 +206,7 @@ impl Value {
     ///   elements in the list are skipped.
     /// - For other primitive/scalar types [`Value`] is compared against the field [`DataType`]
     ///   definition.
-    pub fn type_check_shallow(
+    pub(crate) fn type_check_shallow(
         &self,
         field: &Field,
         path: &PathVector,
@@ -216,7 +217,7 @@ impl Value {
             | (Value::String(_), DataType::String) => {
                 if !field.is_optional() && self.is_null() {
                     Err(TypeCheckError::RequiredFieldIsNull {
-                        path: path.clone(),
+                        path: path.to_vec(),
                         field: field.clone(),
                     })
                 } else {
@@ -259,7 +260,7 @@ impl Value {
     /// - `path` - The path from root of the value used in [`TypeCheckError`]
     /// - `props` - The name, value pairs extracted from [`Value::Struct`]
     /// - `fields` - The field definitions extracted from [`DataType::Struct`]`
-    pub fn type_check_struct_shallow(
+    pub(crate) fn type_check_struct_shallow(
         path: &PathVector,
         props: &Vec<(String, Value)>,
         fields: &Vec<Field>,
@@ -315,7 +316,7 @@ impl Value {
                 .collect::<Vec<_>>();
             Err(TypeCheckError::RequiredFieldsAreMissing {
                 missing,
-                path: path.clone(),
+                path: path.to_vec(),
             })
         } else {
             Ok(())
@@ -331,12 +332,12 @@ pub enum TypeCheckError {
         field: Field,
     },
     RequiredFieldIsNull {
-        path: PathVector,
+        path: Vec<String>,
         field: Field,
     },
     RequiredFieldsAreMissing {
         missing: Vec<String>,
-        path: PathVector,
+        path: Vec<String>,
     },
     StructSchemaMismatch {
         props: Vec<(String, Value)>,
@@ -366,19 +367,19 @@ pub struct DepthFirstValueIterator<'a> {
 }
 
 impl<'a> Iterator for DepthFirstValueIterator<'a> {
-    type Item = (&'a Value, PathVector);
+    type Item = (&'a Value, ValuePath);
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some((value, current_path)) = self.stack.pop() {
             match value {
                 Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
-                    Some((value, current_path))
+                    Some((value, current_path.to_vec()))
                 }
                 Value::List(values) => {
                     for item in values.iter().rev() {
                         self.stack.push((item, current_path.clone()))
                     }
-                    Some((value, current_path))
+                    Some((value, current_path.to_vec()))
                 }
                 Value::Struct(fields) => {
                     for (key, value) in fields.iter().rev() {
@@ -386,7 +387,7 @@ impl<'a> Iterator for DepthFirstValueIterator<'a> {
                         new_path.push(key.to_string());
                         self.stack.push((value, new_path));
                     }
-                    Some((value, current_path))
+                    Some((value, current_path.to_vec()))
                 }
             }
         } else {
@@ -749,21 +750,21 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].0, &Value::Boolean(Some(true)));
-        assert_eq!(items[0].1, PathVector::default());
+        assert!(items[0].1.is_empty());
 
         let value = Value::from(100);
         let items = value.iter_depth_first().collect::<Vec<_>>();
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].0, &Value::Integer(Some(100)));
-        assert_eq!(items[0].1, PathVector::default());
+        assert!(items[0].1.is_empty());
 
         let value = Value::from("hello");
         let items = value.iter_depth_first().collect::<Vec<_>>();
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].0, &Value::String(Some("hello".to_string())));
-        assert_eq!(items[0].1, PathVector::default());
+        assert!(items[0].1.is_empty());
     }
 
     #[test]
@@ -789,10 +790,10 @@ mod tests {
         assert_eq!(items[2].0, &Value::Boolean(Some(false)));
         assert_eq!(items[3].0, &Value::Boolean(None));
 
-        assert_eq!(items[0].1, PathVector::default());
-        assert_eq!(items[1].1, PathVector::default());
-        assert_eq!(items[2].1, PathVector::default());
-        assert_eq!(items[3].1, PathVector::default());
+        assert!(items[0].1.is_empty());
+        assert!(items[1].1.is_empty());
+        assert!(items[2].1.is_empty());
+        assert!(items[3].1.is_empty());
     }
 
     #[test]
@@ -816,16 +817,14 @@ mod tests {
         assert_eq!(items.len(), 4);
 
         assert!(matches!(items[0].0, Value::Struct(_)));
-        assert_eq!(items[0].1, PathVector::default());
-
         assert_eq!(items[1].0, &Value::String(None));
-        assert_eq!(items[1].1, vec!["name".to_string()]);
-
         assert_eq!(items[2].0, &Value::Integer(None));
-        assert_eq!(items[2].1, vec!["age".to_string()]);
-
         assert_eq!(items[3].0, &Value::Boolean(None));
-        assert_eq!(items[3].1, vec!["active".to_string()]);
+
+        assert!(items[0].1.is_empty());
+        assert_eq!(items[1].1, ["name"]);
+        assert_eq!(items[2].1, ["age"]);
+        assert_eq!(items[3].1, ["active"]);
     }
 
     #[test]
@@ -859,34 +858,34 @@ mod tests {
         assert_eq!(items.len(), 13);
 
         assert!(matches!(items[0].0, Value::Struct(_)));
-        assert_eq!(items[0].1, PathVector::default());
+        assert!(items[0].1.is_empty());
 
         assert_eq!(items[1].0, &Value::Integer(Some(10)));
-        assert_eq!(items[1].1, vec!["a".to_string()]);
+        assert_eq!(items[1].1, ["a"]);
 
         assert!(matches!(items[2].0, Value::List(_)));
         assert_eq!(items[3].0, &Value::String(Some(String::from("x"))));
         assert_eq!(items[4].0, &Value::String(Some(String::from("y"))));
-        assert_eq!(items[3].1, vec!["b".to_string()]);
-        assert_eq!(items[4].1, vec!["b".to_string()]);
+        assert_eq!(items[3].1, ["b"]);
+        assert_eq!(items[4].1, ["b"]);
 
         assert!(matches!(items[5].0, Value::Struct(_)));
-        assert_eq!(items[5].1, vec!["c".to_string()]);
+        assert_eq!(items[5].1, ["c"]);
 
         assert!(matches!(items[6].0, Value::List(_)));
         assert_eq!(items[7].0, &Value::Integer(Some(20)));
         assert_eq!(items[8].0, &Value::Integer(Some(30)));
-        assert_eq!(items[7].1, vec!["c".to_string(), "p".to_string()]);
-        assert_eq!(items[8].1, vec!["c".to_string(), "p".to_string()]);
+        assert_eq!(items[7].1, ["c", "p"]);
+        assert_eq!(items[8].1, ["c", "p"]);
 
         assert!(matches!(items[9].0, Value::List(_)));
         assert_eq!(items[10].0, &Value::Integer(Some(40)));
         assert_eq!(items[11].0, &Value::Integer(Some(50)));
-        assert_eq!(items[10].1, vec!["c".to_string(), "q".to_string()]);
-        assert_eq!(items[11].1, vec!["c".to_string(), "q".to_string()]);
+        assert_eq!(items[10].1, ["c", "q"]);
+        assert_eq!(items[11].1, ["c", "q"]);
 
         assert_eq!(items[12].0, &Value::String(None));
-        assert_eq!(items[12].1, vec!["d".to_string()]);
+        assert_eq!(items[12].1, ["d"]);
     }
 
     #[test]
@@ -909,20 +908,20 @@ mod tests {
         assert!(matches!(items[6].0, Value::Struct(_)));
         assert!(matches!(items[8].0, Value::Struct(_)));
 
-        assert_eq!(items[0].1, PathVector::default());
-        assert_eq!(items[1].1, PathVector::default());
-        assert_eq!(items[4].1, PathVector::default());
-        assert_eq!(items[6].1, PathVector::default());
-        assert_eq!(items[8].1, PathVector::default());
+        assert!(items[0].1.is_empty());
+        assert!(items[1].1.is_empty());
+        assert!(items[4].1.is_empty());
+        assert!(items[6].1.is_empty());
+        assert!(items[8].1.is_empty());
 
         assert_eq!(items[2].0, &Value::Integer(Some(10)));
         assert_eq!(items[3].0, &Value::Integer(Some(20)));
         assert_eq!(items[5].0, &Value::Integer(Some(30)));
         assert_eq!(items[7].0, &Value::Integer(Some(40)));
 
-        assert_eq!(items[2].1, vec!["x".to_string()]);
-        assert_eq!(items[3].1, vec!["y".to_string()]);
-        assert_eq!(items[5].1, vec!["x".to_string()]);
-        assert_eq!(items[7].1, vec!["y".to_string()]);
+        assert_eq!(items[2].1, ["x"]);
+        assert_eq!(items[3].1, ["y"]);
+        assert_eq!(items[5].1, ["x"]);
+        assert_eq!(items[7].1, ["y"]);
     }
 }
