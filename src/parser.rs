@@ -495,28 +495,40 @@ impl<'a> ValueParser<'a> {
         }
     }
 
-    /// Lookup a field by resolving path using the field definitions context
-    fn get_field_by_path(&self, path: &PathVector) -> Result<&Field, ParseError<'a>> {
+    /// Lookup field definition of a [`Value`] using its path from root
+    ///
+    /// # Panics
+    /// - If path is root because a name is required to look up a field
+    ///   definition.
+    /// - If the internal struct context stack is empty which indicates
+    ///   a bug in the machinery.
+    /// - If the field name (derived from path) is not found in the current
+    ///   struct context it indicates a logical error. This should have been
+    ///   caught earlier during type-checking of parent [`Value::Struct`].
+    fn get_field_by_path(&self, path: &PathVector) -> &Field {
         if path.is_root() {
-            return Err(ParseError::FieldNameLookupInRoot);
+            panic!("Field definition lookup in struct context does not work for root path");
         }
 
-        let field_name = path.last().unwrap();
+        let field_name = path
+            .last()
+            .expect("Path unexpectedly empty after is_root check");
 
-        self.state
-            .current_struct_context()
-            .ok_or_else(|| ParseError::FieldNameLookupMissingContext {
-                field_name: field_name.to_string(),
-                path: path.to_vec(),
-            })
-            .and_then(|ctx| {
-                ctx.find_field(field_name)
-                    .ok_or_else(|| ParseError::FieldNameLookupFailed {
-                        field_name: field_name.to_string(),
-                        path: path.to_vec(),
-                        ctx: ctx.clone(),
-                    })
-            })
+        let ctx = self.state.current_struct_context().unwrap_or_else(|| {
+            panic!(
+                "Struct context stack is empty when trying to find field name '{}' for path '{}'",
+                field_name,
+                path.join(".")
+            )
+        });
+
+        ctx.find_field(field_name).unwrap_or_else(|| {
+            panic!(
+                "Field name '{}' not found in struct context for '{}'",
+                field_name,
+                path.join(".")
+            )
+        })
     }
 
     /// Computes level metadata from field definition and updates the computed levels stack
@@ -922,10 +934,8 @@ impl<'a> Iterator for ValueParser<'a> {
                     WorkItem::Value(value, path) => {
                         self.state.transition_to(&path);
 
-                        let field = match self.get_field_by_path(&path) {
-                            Ok(field) => field.clone(),
-                            Err(err) => return Some(Err(err)),
-                        };
+                        let field_ref = self.get_field_by_path(&path);
+                        let field = field_ref.clone();
                         match value.type_check_shallow(&field, &path) {
                             Ok(()) => {
                                 if let Err(err) = self.push_derived_level_context(&field, &path) {
