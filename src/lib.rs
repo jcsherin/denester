@@ -11,7 +11,7 @@
 #![warn(missing_debug_implementations)]
 // #![warn(missing_docs)]
 
-mod error;
+pub mod error;
 pub mod field;
 mod field_path;
 pub mod parser;
@@ -19,6 +19,7 @@ pub mod schema;
 mod schema_path;
 pub mod value;
 
+pub use self::error::{DenesterError, Result};
 pub use self::parser::ValueParser;
 pub use self::schema::SchemaBuilder;
 pub use self::value::ValueBuilder;
