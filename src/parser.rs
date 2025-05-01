@@ -229,13 +229,13 @@ impl LevelContext {
 }
 
 #[derive(Debug)]
-struct ListContext {
+struct RepetitionContext {
     field_name: String,
     current_index: usize,
     depth: usize,
 }
 
-impl ListContext {
+impl RepetitionContext {
     fn new(field_name: String, depth: usize) -> Self {
         Self {
             field_name,
@@ -362,7 +362,7 @@ enum WorkItem<'a> {
 #[derive(Debug, Default)]
 struct ValueParserState {
     struct_context_stack: Vec<StructContext>,
-    list_stack: Vec<ListContext>,
+    repetition_context_stack: Vec<RepetitionContext>,
     prev_path: PathVector,
     level_context_stack: Vec<LevelContext>,
     missing_paths_buffer: DequeStack<PathMetadata>,
@@ -378,7 +378,7 @@ impl ValueParserState {
                     schema.fields().to_vec(),
                     PathVector::default(),
                 )],
-                list_stack: vec![],
+                repetition_context_stack: vec![],
                 prev_path: PathVector::default(),
                 level_context_stack: vec![LevelContext::default()],
                 missing_paths_buffer: DequeStack::new(),
@@ -444,8 +444,10 @@ impl ValueParserState {
 
         // TODO: add `depth` method to PathVector
         let curr_depth = curr_path.len();
-        while !self.list_stack.is_empty() && self.list_stack.last().unwrap().depth() > curr_depth {
-            self.list_stack.pop().unwrap();
+        while !self.repetition_context_stack.is_empty()
+            && self.repetition_context_stack.last().unwrap().depth() > curr_depth
+        {
+            self.repetition_context_stack.pop().unwrap();
         }
     }
 }
@@ -566,8 +568,8 @@ impl<'a> ValueParser<'a> {
     /// trivial to track the list element index during depth-first traversal at any nesting level.
     fn push_list_iterator_context(&mut self, field: &Field, path: &PathVector) {
         self.state
-            .list_stack
-            .push(ListContext::new(field.name().to_string(), path.len()));
+            .repetition_context_stack
+            .push(RepetitionContext::new(field.name().to_string(), path.len()));
     }
 
     /// Adds a frame to stack with field definitions for type-checking children
@@ -702,7 +704,7 @@ impl<'a> ValueParser<'a> {
 
     /// Checks if supplied field matches the list iterator context
     fn is_matching_list_iterator_context(&self, field: &Field) -> bool {
-        match self.state.list_stack.last() {
+        match self.state.repetition_context_stack.last() {
             None => false,
             Some(ctx) => ctx.field_name() == field.name(),
         }
@@ -716,7 +718,7 @@ impl<'a> ValueParser<'a> {
     ///
     /// The definition level of a list item is independent of its index.
     fn get_level_context(&self, path: &PathVector) -> Result<LevelContext, ParseError<'a>> {
-        let list_context = match self.state.list_stack.last() {
+        let list_context = match self.state.repetition_context_stack.last() {
             None => {
                 return Err(ParseError::MissingListContext {
                     path: path.to_vec(),
@@ -753,7 +755,7 @@ impl<'a> ValueParser<'a> {
 
     /// Advances the list iterator position by one
     fn advance_list_iterator(&mut self, path: &PathVector) -> Result<(), ParseError<'a>> {
-        let ctx = match self.state.list_stack.last_mut() {
+        let ctx = match self.state.repetition_context_stack.last_mut() {
             None => {
                 return Err(ParseError::MissingListContext {
                     path: path.to_vec(),
