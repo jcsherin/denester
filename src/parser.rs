@@ -364,7 +364,7 @@ struct ValueParserState {
     struct_context_stack: Vec<StructContext>,
     list_stack: Vec<ListContext>,
     prev_path: PathVector,
-    computed_levels: Vec<LevelContext>,
+    level_context_stack: Vec<LevelContext>,
     missing_paths_buffer: DequeStack<PathMetadata>,
 }
 
@@ -380,7 +380,7 @@ impl ValueParserState {
                 )],
                 list_stack: vec![],
                 prev_path: PathVector::default(),
-                computed_levels: vec![LevelContext::default()],
+                level_context_stack: vec![LevelContext::default()],
                 missing_paths_buffer: DequeStack::new(),
             }
         }
@@ -420,14 +420,14 @@ impl ValueParserState {
             return;
         }
 
-        while self.computed_levels.len() > 1 {
-            let top = self.computed_levels.last().unwrap();
+        while self.level_context_stack.len() > 1 {
+            let top = self.level_context_stack.last().unwrap();
 
             if top.path().is_root() || curr_path.starts_with(top.path()) {
                 break;
             }
 
-            self.computed_levels.pop().unwrap();
+            self.level_context_stack.pop().unwrap();
         }
 
         while self.struct_context_stack.len() > 1 {
@@ -535,23 +535,26 @@ impl<'a> ValueParser<'a> {
     /// tracks the definition, repetition levels from root to leaf node. At the leaf node the most
     /// recent stack entry is used to construct a column value with the correct definition and
     /// repetition levels.
-    fn push_derived_level_context(
-        &mut self,
-        field: &Field,
-        path: &PathVector,
-    ) -> Result<(), ParseError<'a>> {
-        let parent_ctx =
-            self.state
-                .computed_levels
-                .last()
-                .ok_or_else(|| ParseError::MissingLevelContext {
-                    path: path.to_vec(),
-                })?;
+    ///
+    /// Computes definition, repetition levels and adds it to the level context
+    /// stack.
+    ///
+    /// # Panics
+    /// - If the level context stack is empty. Deriving definition and
+    ///   repetition levels for the current [`Value`] node depends on the
+    ///   computed values of the parent [`Value`]. A problem here indicates
+    ///   a bug in how the level context stack is maintained.
+    fn push_derived_level_context(&mut self, field: &Field, path: &PathVector) {
+        let parent_ctx = self.state.level_context_stack.last().unwrap_or_else(|| {
+            panic!(
+                "Level context stack is unexpectedly empty for name '{}' and path '{}'",
+                field.name(),
+                path
+            );
+        });
 
-        let new_ctx = parent_ctx.with_field(field, path);
-        self.state.computed_levels.push(new_ctx);
-
-        Ok(())
+        let ctx = parent_ctx.with_field(field, path);
+        self.state.level_context_stack.push(ctx);
     }
 
     /// Adds a frame to stack for tracking a list element position during depth-first traversal
@@ -662,7 +665,7 @@ impl<'a> ValueParser<'a> {
     ) -> Result<StripedColumnValue, ParseError<'a>> {
         let level_context =
             self.state
-                .computed_levels
+                .level_context_stack
                 .last()
                 .ok_or(ParseError::MissingLevelContext {
                     path: path.to_vec(),
@@ -722,7 +725,7 @@ impl<'a> ValueParser<'a> {
             Some(ctx) => ctx,
         };
 
-        let level_context = match self.state.computed_levels.last() {
+        let level_context = match self.state.level_context_stack.last() {
             None => {
                 return Err(ParseError::MissingLevelContext {
                     path: path.to_vec(),
@@ -936,9 +939,7 @@ impl<'a> Iterator for ValueParser<'a> {
                         let field = field_ref.clone();
                         match value.type_check_shallow(&field, &path) {
                             Ok(()) => {
-                                if let Err(err) = self.push_derived_level_context(&field, &path) {
-                                    return Some(Err(err));
-                                }
+                                self.push_derived_level_context(&field, &path);
 
                                 match value {
                                     Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
@@ -1058,7 +1059,7 @@ impl<'a> Iterator for ValueParser<'a> {
                                                 match self.get_level_context(&path) {
                                                     Err(err) => return Some(Err(err)),
                                                     Ok(ctx) => {
-                                                        self.state.computed_levels.push(ctx);
+                                                        self.state.level_context_stack.push(ctx);
                                                         if let Err(err) =
                                                             self.advance_list_iterator(&path)
                                                         {
