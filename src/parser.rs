@@ -252,7 +252,7 @@ impl RepetitionContext {
         &self.field_name
     }
 
-    pub fn position(&self) -> usize {
+    pub fn current_index(&self) -> usize {
         self.current_index
     }
 
@@ -702,46 +702,56 @@ impl<'a> ValueParser<'a> {
         ))
     }
 
-    /// Computes repetition, definition level from state for a list element
+    /// Computes level context for a list element based on its index.
     ///
-    /// The repetition level of a list element is dependent on its index. To be able to reassemble
-    /// the column-striped record back, the first element has a different derivation of repetition
-    /// level than other items.
+    /// To identify the start of a list, the computed repetition level will always match its
+    /// parent's repetition level. For the remainder of the list, the repetition depth is used. The
+    /// repetition depth tracks the count of all repeated fields seen so far in this path.
     ///
-    /// The definition level of a list item is independent of its index.
-    fn get_level_context(&self, path: &PathVector) -> Result<LevelContext, ParseError<'a>> {
-        let list_context = match self.state.repetition_context_stack.last() {
-            None => {
-                return Err(ParseError::MissingListContext {
-                    path: path.to_vec(),
-                })
-            }
-            Some(ctx) => ctx,
-        };
+    /// # Panics
+    /// - If repetition context stack is empty. Without knowing the index of the list element it is
+    ///   not possible to proceed with level computation. This indicates a bug in how the repetition
+    ///   context stack is maintained.
+    /// - If level context stack is empty. The computed levels of the parent is required for level
+    ///   computation. For the root node a zeroed out level context is initialized in state as the
+    ///   parent level context. The stack being empty indicates a bug in how the level context stack
+    ///   is maintained.
+    fn get_level_context(&self, path: &PathVector) -> LevelContext {
+        let rep_ctx = self
+            .state
+            .repetition_context_stack
+            .last()
+            .unwrap_or_else(|| {
+                panic!(
+                    "Repetition context stack is empty.\
+             The levels computation for list element in path '{}' cannot proceed.",
+                    path
+                )
+            });
 
-        let level_context = match self.state.level_context_stack.last() {
-            None => {
-                return Err(ParseError::MissingLevelContext {
-                    path: path.to_vec(),
-                })
-            }
-            Some(ctx) => ctx,
-        };
+        let level_ctx = self.state.level_context_stack.last().unwrap_or_else(|| {
+            panic!(
+                "Level context stack is empty.\
+            The levels computation for list element in path '{}' cannot proceed.",
+                path
+            )
+        });
 
-        if list_context.position() > 0 {
-            Ok(LevelContext {
-                definition_level: level_context.definition_level,
-                repetition_depth: level_context.repetition_depth,
-                repetition_level: level_context.repetition_depth,
-                path: path.clone(),
-            })
+        // To identify the start of a list for the first element the repetition level is the same
+        // as that of its parent. For the remaining elements we use the actual repetition depth
+        // of the field. The repetition depth tracks the count of repeated fields in this value
+        // path.
+        let repetition_level = if rep_ctx.current_index() > 0 {
+            level_ctx.repetition_depth
         } else {
-            Ok(LevelContext {
-                definition_level: level_context.definition_level,
-                repetition_depth: level_context.repetition_depth,
-                repetition_level: level_context.repetition_level,
-                path: path.clone(),
-            })
+            level_ctx.repetition_level
+        };
+
+        LevelContext {
+            definition_level: level_ctx.definition_level,
+            repetition_level,
+            repetition_depth: level_ctx.repetition_depth,
+            path: path.clone(),
         }
     }
 
@@ -1038,15 +1048,11 @@ impl<'a> Iterator for ValueParser<'a> {
                                                 // level info, but before processing the element. This ensures
                                                 // that the next element will find the iterator in the right
                                                 // state when retrieving level info.
-                                                let ctx = match self.get_level_context(&path) {
-                                                    Ok(ctx) => {
-                                                        match self.advance_list_iterator(&path) {
-                                                            Ok(_) => ctx,
-                                                            Err(err) => return Some(Err(err)),
-                                                        }
-                                                    }
+                                                let ctx = self.get_level_context(&path);
+                                                match self.advance_list_iterator(&path) {
+                                                    Ok(_) => {}
                                                     Err(err) => return Some(Err(err)),
-                                                };
+                                                }
 
                                                 return Some(self.get_column_from_scalar_list(
                                                     &path,
@@ -1063,16 +1069,11 @@ impl<'a> Iterator for ValueParser<'a> {
                                                 // level. These computed values must be propagated down through the entire
                                                 // struct subtree.
 
-                                                match self.get_level_context(&path) {
-                                                    Err(err) => return Some(Err(err)),
-                                                    Ok(ctx) => {
-                                                        self.state.level_context_stack.push(ctx);
-                                                        if let Err(err) =
-                                                            self.advance_list_iterator(&path)
-                                                        {
-                                                            return Some(Err(err));
-                                                        }
-                                                    }
+                                                let ctx = self.get_level_context(&path);
+                                                self.state.level_context_stack.push(ctx);
+                                                if let Err(err) = self.advance_list_iterator(&path)
+                                                {
+                                                    return Some(Err(err));
                                                 }
 
                                                 self.push_fields_context(&field, &path);
