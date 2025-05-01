@@ -1,89 +1,16 @@
 //! Implements the core logic for parsing nested values according to a schema
 //! and producing a flattened representation suitable for columnar storage.
 
+use crate::error::{DenesterError, Result};
 use crate::field::{DataType, Field};
-use crate::field_path::{FieldPath, PathMetadata, PathMetadataIterator};
-use crate::parser::ParseError::{RequiredFieldIsNull, RequiredFieldsAreMissing};
+use crate::field_path::{PathMetadata, PathMetadataIterator};
 use crate::path_vector::PathVector;
 use crate::schema::Schema;
-use crate::value::{DepthFirstValueIterator, TypeCheckError, Value};
+use crate::value::{DepthFirstValueIterator, Value};
 use crate::{DefinitionLevel, RepetitionDepth, RepetitionLevel};
 use std::collections::{HashSet, VecDeque};
-use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
 use std::ops::Deref;
-
-/// TODO: Add docs after reviewing error handling
-#[derive(Debug)]
-pub enum ParseError {
-    RequiredFieldIsNull {
-        field_path: FieldPath,
-    },
-    RootIsNotStruct,
-    RequiredFieldsAreMissing {
-        missing: Vec<String>,
-        path: Vec<String>,
-    },
-    ListTypeMismatch {
-        path: Vec<String>,
-    },
-}
-
-impl From<TypeCheckError> for ParseError {
-    fn from(err: TypeCheckError) -> Self {
-        match err {
-            TypeCheckError::DataTypeMismatch { .. } => {
-                todo!()
-            }
-            TypeCheckError::RequiredFieldIsNull { path, field } => RequiredFieldIsNull {
-                field_path: FieldPath::new(field, path.into()),
-            },
-            TypeCheckError::RequiredFieldsAreMissing { missing, path } => {
-                RequiredFieldsAreMissing {
-                    missing,
-                    path: path.to_vec(),
-                }
-            }
-            TypeCheckError::StructSchemaMismatch { .. } => {
-                todo!()
-            }
-            TypeCheckError::StructDuplicateProperty { .. } => {
-                todo!()
-            }
-            TypeCheckError::StructUnknownProperty { .. } => {
-                todo!()
-            }
-        }
-    }
-}
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RequiredFieldIsNull { field_path } => {
-                write!(f, "Required field is null: {}", field_path)
-            }
-            ParseError::RootIsNotStruct => {
-                write!(f, "Root is not a struct type value")
-            }
-            RequiredFieldsAreMissing { missing, path } => {
-                write!(
-                    f,
-                    "Required fields missing: {} in path: {}",
-                    missing.join(", "),
-                    path.join(".")
-                )
-            }
-            ParseError::ListTypeMismatch { path } => {
-                write!(
-                    f,
-                    "Type checking failed for list element: {}",
-                    path.join(".")
-                )
-            }
-        }
-    }
-}
 
 #[derive(Debug, Default)]
 struct LevelContext {
@@ -775,8 +702,8 @@ fn find_missing_paths(
         .collect()
 }
 
-type StripedColumnResult = Result<StripedColumnValue, ParseError>;
-impl<'a> Iterator for ValueParser<'a> {
+type StripedColumnResult = Result<StripedColumnValue>;
+impl Iterator for ValueParser<'_> {
     type Item = StripedColumnResult;
 
     /// A column value is returned by traversing from root to leaf in depth-first order. For partial
@@ -808,7 +735,9 @@ impl<'a> Iterator for ValueParser<'a> {
                             Value::Boolean(_)
                             | Value::Integer(_)
                             | Value::String(_)
-                            | Value::List(_) => return Some(Err(ParseError::RootIsNotStruct)),
+                            | Value::List(_) => {
+                                return Some(Err(DenesterError::InputValueMustBeAStruct))
+                            }
                         };
 
                         let ctx = self
@@ -818,7 +747,7 @@ impl<'a> Iterator for ValueParser<'a> {
                         let fields = ctx.fields().to_vec();
 
                         if let Err(err) = Value::type_check_struct_shallow(&path, props, &fields) {
-                            return Some(Err(err.into()));
+                            return Some(Err(err));
                         }
 
                         self.buffer_missing_paths(&fields, &path, props);
@@ -886,7 +815,7 @@ impl<'a> Iterator for ValueParser<'a> {
                             }
                             Err(type_check_error) => {
                                 if !matches!(field.data_type(), DataType::List(_)) {
-                                    return Some(Err(ParseError::from(type_check_error)));
+                                    return Some(Err(type_check_error));
                                 }
 
                                 // --- Invariant Check ---
@@ -988,9 +917,13 @@ impl<'a> Iterator for ValueParser<'a> {
                                                 }
                                             }
                                             _ => {
-                                                return Some(Err(ParseError::ListTypeMismatch {
-                                                    path: path.to_vec(),
-                                                }))
+                                                return Some(Err(
+                                                    DenesterError::ListElementDoesNotMatchSchema {
+                                                        field_name: field.name().into(),
+                                                        path_str: format!("{}", path),
+                                                        index: current_rep_ctx.current_index(),
+                                                    },
+                                                ));
                                             }
                                         }
                                     }
@@ -1179,8 +1112,8 @@ mod tests {
         let mut parser = ValueParser::new(&schema, value.iter_depth_first());
 
         assert!(matches!(parser.next().unwrap(),
-                Err(RequiredFieldsAreMissing { missing, path })
-                if path.is_empty() && missing.len() == 1 && missing[0] == *"x"));
+                Err(DenesterError::MissingOneOrMoreRequiredValues {missing_field_names,path_str  })
+            if !missing_field_names.is_empty() && missing_field_names.first().unwrap() == "x" && path_str == "<root>"));
         assert!(parser.next().is_none());
     }
 
@@ -1195,8 +1128,8 @@ mod tests {
         let mut parser = ValueParser::new(&schema, value.iter_depth_first());
 
         assert!(matches!(parser.next().unwrap(),
-            Err(RequiredFieldIsNull { field_path })
-            if *field_path.path() == PathVector::from(&["x"][..]) && field_path.field() == &integer("x")
+            Err(DenesterError::NullValueInRequiredField {field_name,type_label,path_str  })
+            if field_name == "x" && type_label == "Integer" && path_str == "x"
         ));
         // TODO: add a test which contains other fields after the required field
         assert!(parser.next().is_none());

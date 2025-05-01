@@ -23,6 +23,19 @@ impl DataType {
     pub fn is_list(&self) -> bool {
         matches!(self, DataType::List(_))
     }
+
+    /// Returns a string label representing the variant of this [`DataType`].
+    pub fn type_label(&self) -> String {
+        let label = match self {
+            DataType::Boolean => "Boolean",
+            DataType::Integer => "Integer",
+            DataType::String => "String",
+            DataType::List(_) => "List", // does not include nested type
+            DataType::Struct(_) => "Struct", // does not include fields
+        };
+
+        label.into()
+    }
 }
 
 /// Represents a named schema element, its data type and if the field is

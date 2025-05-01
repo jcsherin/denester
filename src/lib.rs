@@ -11,6 +11,7 @@
 #![warn(missing_debug_implementations)]
 // #![warn(missing_docs)]
 
+mod error;
 pub mod field;
 pub mod field_path;
 pub mod parser;

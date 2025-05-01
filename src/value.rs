@@ -1,11 +1,11 @@
 //! Defines the representation of nested data structure values.
 
+use crate::error::{DenesterError, Result};
 use crate::field::{DataType, Field};
 use crate::path_vector::PathVector;
 use crate::ValuePath;
 use std::collections::HashSet;
-use std::fmt;
-use std::fmt::Formatter;
+use std::fmt::{self, Formatter};
 
 /// Represents the concrete instance of nested data structure.
 ///
@@ -206,19 +206,16 @@ impl Value {
     ///   elements in the list are skipped.
     /// - For other primitive/scalar types [`Value`] is compared against the field [`DataType`]
     ///   definition.
-    pub(crate) fn type_check_shallow(
-        &self,
-        field: &Field,
-        path: &PathVector,
-    ) -> Result<(), TypeCheckError> {
+    pub(crate) fn type_check_shallow(&self, field: &Field, path: &PathVector) -> Result<()> {
         match (self, field.data_type()) {
             (Value::Boolean(_), DataType::Boolean)
             | (Value::Integer(_), DataType::Integer)
             | (Value::String(_), DataType::String) => {
                 if !field.is_optional() && self.is_null() {
-                    Err(TypeCheckError::RequiredFieldIsNull {
-                        path: path.to_vec(),
-                        field: field.clone(),
+                    Err(DenesterError::NullValueInRequiredField {
+                        field_name: field.name().into(),
+                        type_label: field.data_type().type_label(),
+                        path_str: format!("{}", path),
                     })
                 } else {
                     Ok(())
@@ -228,9 +225,10 @@ impl Value {
             (Value::Struct(props), DataType::Struct(fields)) => {
                 Self::type_check_struct_shallow(path, props, fields)
             }
-            _ => Err(TypeCheckError::DataTypeMismatch {
-                value: self.clone(),
-                field: field.clone(),
+            _ => Err(DenesterError::ValueTypeDoesNotMatchSchema {
+                field_name: field.name().into(),
+                path_str: format!("{}", path),
+                expected_type_label: field.data_type().type_label(),
             }),
         }
     }
@@ -264,24 +262,14 @@ impl Value {
         path: &PathVector,
         props: &[(String, Value)],
         fields: &[Field],
-    ) -> Result<(), TypeCheckError> {
-        // If there are more named value pairs than defined fields in the struct, it cannot be a
-        // valid match. Fewer values are allowed as some fields maybe repeated/optional.
-        if props.len() > fields.len() {
-            return Err(TypeCheckError::StructSchemaMismatch {
-                props: props.into(),
-                fields: fields.into(),
-            });
-        }
-
+    ) -> Result<()> {
         // Duplicate names are not allowed
         let mut seen_names = HashSet::new();
         for (name, _) in props {
             if !seen_names.insert(name) {
-                return Err(TypeCheckError::StructDuplicateProperty {
-                    dup: name.clone(),
-                    props: props.into(),
-                    fields: fields.into(),
+                return Err(DenesterError::StructContainsDuplicateProperty {
+                    dup_property_name: name.clone(),
+                    path_str: format!("{}", path),
                 });
             }
         }
@@ -298,10 +286,9 @@ impl Value {
         let mut present_fields = HashSet::new();
         for (name, _) in props {
             if !field_names.contains(name.as_str()) {
-                return Err(TypeCheckError::StructUnknownProperty {
-                    unknown: name.clone(),
-                    props: props.into(),
-                    fields: fields.into(),
+                return Err(DenesterError::StructContainsUndefinedProperty {
+                    undefined_property_name: name.clone(),
+                    path_str: format!("{}", path),
                 });
             }
             present_fields.insert(name.as_str());
@@ -309,14 +296,14 @@ impl Value {
 
         // All required fields are present
         if !required_fields.is_subset(&present_fields) {
-            let missing = required_fields
+            let missing_field_names = required_fields
                 .difference(&present_fields)
                 .copied()
                 .map(|name| name.to_string())
                 .collect::<Vec<_>>();
-            Err(TypeCheckError::RequiredFieldsAreMissing {
-                missing,
-                path: path.to_vec(),
+            Err(DenesterError::MissingOneOrMoreRequiredValues {
+                missing_field_names,
+                path_str: format!("{}", path),
             })
         } else {
             Ok(())

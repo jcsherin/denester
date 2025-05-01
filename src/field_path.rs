@@ -106,21 +106,13 @@ impl Iterator for FieldPathIterator<'_> {
 
                 match field.data_type() {
                     DataType::Boolean | DataType::Integer | DataType::String => {
-                        return Some(FieldPath {
-                            field: field.clone(),
-                            path,
-                        })
+                        return Some(FieldPath::new(field.clone(), path))
                     }
                     DataType::List(datatype) => match datatype.as_ref() {
                         DataType::Struct(fields) => {
                             self.levels.push(FieldLevel::new(fields.iter(), path))
                         }
-                        _ => {
-                            return Some(FieldPath {
-                                field: field.clone(),
-                                path,
-                            })
-                        }
+                        _ => return Some(FieldPath::new(field.clone(), path)),
                     },
                     DataType::Struct(fields) => {
                         self.levels.push(FieldLevel::new(fields.iter(), path))
