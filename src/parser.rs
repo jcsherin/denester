@@ -390,6 +390,10 @@ impl ValueParserState {
         self.struct_context_stack.last()
     }
 
+    fn current_level_context(&self) -> Option<&LevelContext> {
+        self.level_context_stack.last()
+    }
+
     fn increment_repetition_index(&mut self, path: &PathVector) {
         self.repetition_context_stack
             .last_mut()
@@ -648,17 +652,17 @@ impl<'a> ValueParser<'a> {
 
         let data_type = missing_path.field().data_type();
         match data_type {
-            DataType::Boolean | DataType::Integer | DataType::String => self
-                .get_column_from_scalar(
+            DataType::Boolean | DataType::Integer | DataType::String => Ok(self
+                .primitive_to_column_value(
                     &PathVector::from(missing_path.path()),
                     &Value::create_null_or_empty(data_type),
-                ),
+                )),
             DataType::List(inner) => match inner.as_ref() {
-                DataType::Boolean | DataType::Integer | DataType::String => self
-                    .get_column_from_scalar(
+                DataType::Boolean | DataType::Integer | DataType::String => Ok(self
+                    .primitive_to_column_value(
                         &PathVector::from(missing_path.path()),
                         &Value::create_null_or_empty(inner.as_ref()),
-                    ),
+                    )),
                 DataType::List(_) => {
                     unreachable!("not allowed")
                 }
@@ -672,24 +676,39 @@ impl<'a> ValueParser<'a> {
         }
     }
 
-    fn get_column_from_scalar(
-        &self,
-        path: &PathVector,
-        value: &Value,
-    ) -> Result<StripedColumnValue, ParseError<'a>> {
-        let level_context =
-            self.state
-                .level_context_stack
-                .last()
-                .ok_or(ParseError::MissingLevelContext {
-                    path: path.to_vec(),
-                })?;
+    /// Creates a column value given a primitive [`Value`]
+    ///
+    /// # Panics
+    /// - If called with a [`Value::Struct`] or [`Value::List`].
+    /// - If the level context stack is empty. Then the computed repetition
+    ///   and definition levels are unavailable for creating a flattened
+    ///   column value. This indicates an internal bug in how the level context
+    ///   stack is maintained.
+    fn primitive_to_column_value(&self, path: &PathVector, value: &Value) -> StripedColumnValue {
+        // --- Invariant Check ---
+        assert!(
+            matches!(
+                value,
+                Value::Boolean(_) | Value::Integer(_) | Value::String(_)
+            ),
+            "Expected a primitive value for creating a column value at path '{}' but found '{}'",
+            path,
+            value
+        );
+        // --- End Invariant Check ---
 
-        Ok(StripedColumnValue::new(
+        let level_context = self.state.current_level_context().unwrap_or_else(|| {
+            panic!(
+                "Level context stack is unexpectedly empty for path '{}'",
+                path
+            )
+        });
+
+        StripedColumnValue::new(
             value.clone(),
             level_context.repetition_level,
             level_context.definition_level,
-        ))
+        )
     }
 
     fn get_column_from_scalar_list(
@@ -943,7 +962,9 @@ impl<'a> Iterator for ValueParser<'a> {
 
                                 match value {
                                     Value::Boolean(_) | Value::Integer(_) | Value::String(_) => {
-                                        return Some(self.get_column_from_scalar(&path, value))
+                                        return Some(Ok(
+                                            self.primitive_to_column_value(&path, value)
+                                        ))
                                     }
                                     Value::List(items) if items.is_empty() => {
                                         match field.data_type() {
@@ -958,12 +979,13 @@ impl<'a> Iterator for ValueParser<'a> {
                                                     DataType::Boolean
                                                     | DataType::Integer
                                                     | DataType::String => {
-                                                        return Some(self.get_column_from_scalar(
-                                                            &path,
-                                                            &Value::create_null_or_empty(
-                                                                item_data_type.as_ref(),
-                                                            ),
-                                                        ))
+                                                        return Some(Ok(self
+                                                            .primitive_to_column_value(
+                                                                &path,
+                                                                &Value::create_null_or_empty(
+                                                                    item_data_type.as_ref(),
+                                                                ),
+                                                            )))
                                                     }
                                                     DataType::List(_) => {
                                                         unreachable!("nested list type is illegal")
