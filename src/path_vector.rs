@@ -51,17 +51,6 @@ impl Display for PathVector {
 }
 
 impl PathVector {
-    // Formats the path as dot-separated components.
-    // Returns a special string for the root path.
-    // TODO: enable after extracting iterator item struct and removing ValuePath alias
-    // pub fn format(&self) -> String {
-    //     if self.is_empty() {
-    //         "<root>".to_string()
-    //     } else {
-    //         self.join(".")
-    //     }
-    // }
-
     /// Checks if path represents the root (is empty)
     pub fn is_root(&self) -> bool {
         self.is_empty()
