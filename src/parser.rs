@@ -702,14 +702,6 @@ impl<'a> ValueParser<'a> {
         ))
     }
 
-    /// Checks if supplied field matches the list iterator context
-    fn is_matching_list_iterator_context(&self, field: &Field) -> bool {
-        match self.state.repetition_context_stack.last() {
-            None => false,
-            Some(ctx) => ctx.field_name() == field.name(),
-        }
-    }
-
     /// Computes repetition, definition level from state for a list element
     ///
     /// The repetition level of a list element is dependent on its index. To be able to reassemble
@@ -997,11 +989,24 @@ impl<'a> Iterator for ValueParser<'a> {
                                     return Some(Err(ParseError::from(type_check_error)));
                                 }
 
-                                if !self.is_matching_list_iterator_context(&field) {
-                                    return Some(Err(ParseError::MissingListContext {
-                                        path: path.to_vec(),
-                                    }));
-                                }
+                                // --- Invariant Check ---
+                                // The list element MUST have a repetition context corresponding to
+                                // the list container.
+                                let current_rep_ctx = self
+                                    .state
+                                    .repetition_context_stack
+                                    .last()
+                                    .expect(
+                                    "Repetition context is empty when processing a list element",
+                                );
+
+                                // The field name from the context must match the field we are processing.
+                                assert_eq!(current_rep_ctx.field_name(), field.name(),
+                                           "Field name mismatch. Found '{}, but expected '{}'\
+                                            in repetition context when processing list element in path '{}'",
+                                            current_rep_ctx.field_name(), field.name(), path
+                                );
+                                // --- End Invariant Check ---
 
                                 // Shallow type-checking intentionally skips list element type
                                 // verification to keep the process simple.
