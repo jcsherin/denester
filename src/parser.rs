@@ -15,52 +15,11 @@ use std::ops::Deref;
 
 /// TODO: Add docs after reviewing error handling
 #[derive(Debug)]
-pub enum ParseError<'a> {
+pub enum ParseError {
     RequiredFieldIsNull {
         field_path: FieldPath,
     },
-    UnexpectedTopLevelValue {
-        value: &'a Value,
-    },
-    FieldsNotFound {
-        value: &'a Value,
-    },
-    TypeCheckFailed {
-        prop_names: Vec<String>,
-        fields: Vec<Field>,
-    },
-    MissingListContext {
-        path: Vec<String>,
-    },
-    ListItemNonNullable {
-        path: Vec<String>,
-        field: DataType,
-    },
-    PathIsEmpty {
-        value: Value,
-    },
-    UnknownField {
-        field_name: String,
-        value: Value,
-    },
-    MissingStructContext {
-        path: Vec<String>,
-    },
-    FieldNameLookupInRoot,
-    FieldNameLookupMissingContext {
-        field_name: String,
-        path: Vec<String>,
-    },
-    FieldNameLookupFailed {
-        field_name: String,
-        path: Vec<String>,
-        ctx: StructContext,
-    },
     RootIsNotStruct,
-    MissingFieldsContext,
-    MissingLevelContext {
-        path: Vec<String>,
-    },
     RequiredFieldsAreMissing {
         missing: Vec<String>,
         path: Vec<String>,
@@ -70,7 +29,7 @@ pub enum ParseError<'a> {
     },
 }
 
-impl From<TypeCheckError> for ParseError<'_> {
+impl From<TypeCheckError> for ParseError {
     fn from(err: TypeCheckError) -> Self {
         match err {
             TypeCheckError::DataTypeMismatch { .. } => {
@@ -98,87 +57,16 @@ impl From<TypeCheckError> for ParseError<'_> {
     }
 }
 
-impl Display for ParseError<'_> {
+impl Display for ParseError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             RequiredFieldIsNull { field_path } => {
                 write!(f, "Required field is null: {}", field_path)
             }
-            ParseError::UnexpectedTopLevelValue { value } => {
-                write!(f, "Expected top-level struct, found: {}", value)
-            }
-            ParseError::FieldsNotFound { value } => {
-                write!(f, "Field definitions not found for value: {}", value)
-            }
-            ParseError::TypeCheckFailed { prop_names, fields } => {
-                write!(
-                    f,
-                    "Type checking failed for props: {} with fields: {}",
-                    prop_names.join(", "),
-                    fields
-                        .iter()
-                        .map(|f| f.name())
-                        .collect::<Vec<_>>()
-                        .join(",")
-                )
-            }
-            ParseError::MissingLevelContext { path } | ParseError::MissingListContext { path } => {
-                write!(
-                    f,
-                    "Level context missing for computing levels. Path: {}",
-                    path.join(".")
-                )
-            }
-            ParseError::MissingStructContext { path } => {
-                write!(
-                    f,
-                    "Missing struct field definitions for path: {}",
-                    path.join(".")
-                )
-            }
-            ParseError::ListItemNonNullable { path, field } => {
-                write!(
-                    f,
-                    "This list does not allow null values. field: {}, path: {}",
-                    field,
-                    path.join(".")
-                )
-            }
-            ParseError::PathIsEmpty { value } => {
-                write!(f, "Path is empty: {}", value)
-            }
-
-            ParseError::UnknownField { field_name, value } => {
-                write!(f, "Unknown field name \"{}\": {}", field_name, value)
-            }
-            ParseError::FieldNameLookupInRoot => {
-                write!(f, "Cannot lookup field by name at root")
-            }
-            ParseError::FieldNameLookupMissingContext { field_name, path } => {
-                write!(
-                    f,
-                    "Context missing for lookup of field name: {} in path: {:#?}",
-                    field_name, path
-                )
-            }
-            ParseError::FieldNameLookupFailed {
-                field_name,
-                path,
-                ctx,
-            } => {
-                write!(
-                    f,
-                    "Field name: {} in path: {:#?} not found in context: {:#?}",
-                    field_name, path, ctx
-                )
-            }
             ParseError::RootIsNotStruct => {
                 write!(f, "Root is not a struct type value")
             }
-            ParseError::MissingFieldsContext => {
-                write!(f, "Root field definitions are missing in context")
-            }
-            ParseError::RequiredFieldsAreMissing { missing, path } => {
+            RequiredFieldsAreMissing { missing, path } => {
                 write!(
                     f,
                     "Required fields missing: {} in path: {}",
@@ -650,7 +538,7 @@ impl<'a> ValueParser<'a> {
     fn create_null_column_for_missing_path(
         &mut self,
         missing_path: &PathMetadata,
-    ) -> StripedColumnResult<'a> {
+    ) -> StripedColumnResult {
         self.state
             .transition_to(&PathVector::from(missing_path.path()));
 
@@ -887,9 +775,9 @@ fn find_missing_paths(
         .collect()
 }
 
-type StripedColumnResult<'a> = Result<StripedColumnValue, ParseError<'a>>;
+type StripedColumnResult = Result<StripedColumnValue, ParseError>;
 impl<'a> Iterator for ValueParser<'a> {
-    type Item = StripedColumnResult<'a>;
+    type Item = StripedColumnResult;
 
     /// A column value is returned by traversing from root to leaf in depth-first order. For partial
     /// or missing paths, a NULL column value is returned. So after processing all the present
