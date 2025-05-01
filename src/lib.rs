@@ -15,8 +15,8 @@ mod error;
 pub mod field;
 pub mod field_path;
 pub mod parser;
-mod path_vector;
 pub mod schema;
+mod schema_path;
 pub mod value;
 
 pub use self::parser::ValueParser;

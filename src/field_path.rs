@@ -1,6 +1,6 @@
 use crate::field::{DataType, Field};
-use crate::path_vector::PathVector;
 use crate::schema::Schema;
+use crate::schema_path::SchemaPath;
 use crate::{DefinitionLevel, RepetitionLevel};
 use std::fmt::{Display, Formatter};
 use std::slice::Iter;
@@ -8,11 +8,11 @@ use std::slice::Iter;
 #[derive(Debug)]
 struct FieldLevel<'a> {
     iter: Iter<'a, Field>,
-    path: PathVector,
+    path: SchemaPath,
 }
 
 impl<'a> FieldLevel<'a> {
-    fn new(iter: Iter<'a, Field>, path: PathVector) -> Self {
+    fn new(iter: Iter<'a, Field>, path: SchemaPath) -> Self {
         Self { iter, path }
     }
 }
@@ -20,11 +20,11 @@ impl<'a> FieldLevel<'a> {
 #[derive(Debug, Clone)]
 pub struct FieldPath {
     field: Field,
-    path: PathVector,
+    path: SchemaPath,
 }
 
 impl FieldPath {
-    pub(crate) fn new(field: Field, path: PathVector) -> Self {
+    pub(crate) fn new(field: Field, path: SchemaPath) -> Self {
         Self { field, path }
     }
 
@@ -32,7 +32,7 @@ impl FieldPath {
         &self.field
     }
 
-    pub(crate) fn path(&self) -> &PathVector {
+    pub(crate) fn path(&self) -> &SchemaPath {
         &self.path
     }
 }
@@ -53,7 +53,7 @@ impl<'a> FieldPathIterator<'a> {
         Self {
             levels: vec![FieldLevel::new(
                 schema.fields().iter(),
-                PathVector::default(),
+                SchemaPath::default(),
             )],
         }
     }
@@ -254,13 +254,13 @@ impl Iterator for PathMetadataIterator<'_> {
 mod tests {
     use crate::field::{DataType, Field};
     use crate::field_path::{FieldPath, FieldPathIterator, PathMetadata};
-    use crate::path_vector::PathVector;
     use crate::schema::{bool, integer, required_group, string, SchemaBuilder};
+    use crate::schema_path::SchemaPath;
 
     #[test]
     fn test_field_path() {
         let email = Field::new("email", DataType::String, true);
-        let path = PathVector::from(&["customer", "address", "email"][..]);
+        let path = SchemaPath::from(&["customer", "address", "email"][..]);
 
         let actual = FieldPath::new(email.clone(), path);
 
@@ -288,9 +288,9 @@ mod tests {
         let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
         assert_eq!(paths.len(), 3);
 
-        assert_eq!(*paths[0].path(), PathVector::from(&["id"][..]));
-        assert_eq!(*paths[1].path(), PathVector::from(&["name"][..]));
-        assert_eq!(*paths[2].path(), PathVector::from(&["active"][..]));
+        assert_eq!(*paths[0].path(), SchemaPath::from(&["id"][..]));
+        assert_eq!(*paths[1].path(), SchemaPath::from(&["name"][..]));
+        assert_eq!(*paths[2].path(), SchemaPath::from(&["active"][..]));
 
         assert_eq!(paths[0].field.data_type(), &DataType::Integer);
         assert_eq!(paths[1].field.data_type(), &DataType::String);
@@ -309,9 +309,9 @@ mod tests {
         let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
         assert_eq!(paths.len(), 3);
 
-        assert_eq!(*paths[0].path(), PathVector::from(&["user", "id"][..]));
-        assert_eq!(*paths[1].path(), PathVector::from(&["user", "name"][..]));
-        assert_eq!(*paths[2].path(), PathVector::from(&["user", "active"][..]));
+        assert_eq!(*paths[0].path(), SchemaPath::from(&["user", "id"][..]));
+        assert_eq!(*paths[1].path(), SchemaPath::from(&["user", "name"][..]));
+        assert_eq!(*paths[2].path(), SchemaPath::from(&["user", "active"][..]));
 
         assert_eq!(paths[0].field.data_type(), &DataType::Integer);
         assert_eq!(paths[1].field.data_type(), &DataType::String);

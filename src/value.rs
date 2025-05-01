@@ -2,7 +2,7 @@
 
 use crate::error::{DenesterError, Result};
 use crate::field::{DataType, Field};
-use crate::path_vector::PathVector;
+use crate::schema_path::SchemaPath;
 use crate::ValuePath;
 use std::collections::HashSet;
 use std::fmt::{self, Formatter};
@@ -183,7 +183,7 @@ impl Value {
     /// Returns a depth-first iterator for a [`Value`].
     pub fn iter_depth_first(&self) -> DepthFirstValueIterator {
         DepthFirstValueIterator {
-            stack: vec![(self, PathVector::default())],
+            stack: vec![(self, SchemaPath::default())],
         }
     }
 
@@ -206,7 +206,7 @@ impl Value {
     ///   elements in the list are skipped.
     /// - For other primitive/scalar types [`Value`] is compared against the field [`DataType`]
     ///   definition.
-    pub(crate) fn type_check_shallow(&self, field: &Field, path: &PathVector) -> Result<()> {
+    pub(crate) fn type_check_shallow(&self, field: &Field, path: &SchemaPath) -> Result<()> {
         match (self, field.data_type()) {
             (Value::Boolean(_), DataType::Boolean)
             | (Value::Integer(_), DataType::Integer)
@@ -259,7 +259,7 @@ impl Value {
     /// - `props` - The name, value pairs extracted from [`Value::Struct`]
     /// - `fields` - The field definitions extracted from [`DataType::Struct`]`
     pub(crate) fn type_check_struct_shallow(
-        path: &PathVector,
+        path: &SchemaPath,
         props: &[(String, Value)],
         fields: &[Field],
     ) -> Result<()> {
@@ -350,7 +350,7 @@ pub enum TypeCheckError {
 /// representing the path from the root to the current node.
 #[derive(Debug)]
 pub struct DepthFirstValueIterator<'a> {
-    stack: Vec<(&'a Value, PathVector)>,
+    stack: Vec<(&'a Value, SchemaPath)>,
 }
 
 impl<'a> Iterator for DepthFirstValueIterator<'a> {

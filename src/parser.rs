@@ -4,8 +4,8 @@
 use crate::error::{DenesterError, Result};
 use crate::field::{DataType, Field};
 use crate::field_path::{PathMetadata, PathMetadataIterator};
-use crate::path_vector::PathVector;
 use crate::schema::Schema;
+use crate::schema_path::SchemaPath;
 use crate::value::{DepthFirstValueIterator, Value};
 use crate::{DefinitionLevel, RepetitionDepth, RepetitionLevel};
 use std::collections::{HashSet, VecDeque};
@@ -17,11 +17,11 @@ struct LevelContext {
     definition_level: DefinitionLevel,
     repetition_depth: RepetitionDepth,
     repetition_level: RepetitionLevel,
-    path: PathVector,
+    path: SchemaPath,
 }
 
 impl LevelContext {
-    fn with_field(&self, field: &Field, path: &PathVector) -> Self {
+    fn with_field(&self, field: &Field, path: &SchemaPath) -> Self {
         let is_optional = field.is_optional();
         let is_repeated = matches!(field.data_type(), DataType::List(_));
 
@@ -38,7 +38,7 @@ impl LevelContext {
         }
     }
 
-    fn path(&self) -> &PathVector {
+    fn path(&self) -> &SchemaPath {
         &self.path
     }
 }
@@ -150,11 +150,11 @@ impl<T> Iterator for DequeStack<T> {
 #[derive(Debug, Default, Clone)]
 pub struct StructContext {
     fields: Vec<Field>,
-    path: PathVector,
+    path: SchemaPath,
 }
 
 impl StructContext {
-    fn new(fields: Vec<Field>, path: PathVector) -> Self {
+    fn new(fields: Vec<Field>, path: SchemaPath) -> Self {
         Self { fields, path }
     }
 
@@ -162,7 +162,7 @@ impl StructContext {
         &self.fields
     }
 
-    fn path(&self) -> &PathVector {
+    fn path(&self) -> &SchemaPath {
         &self.path
     }
 
@@ -173,7 +173,7 @@ impl StructContext {
 
 #[derive(Debug)]
 enum WorkItem<'a> {
-    Value(&'a Value, PathVector),
+    Value(&'a Value, SchemaPath),
     MissingValue(PathMetadata),
     NoMoreWork,
 }
@@ -182,7 +182,7 @@ enum WorkItem<'a> {
 struct ValueParserState {
     struct_context_stack: Vec<StructContext>,
     repetition_context_stack: Vec<RepetitionContext>,
-    prev_path: PathVector,
+    prev_path: SchemaPath,
     level_context_stack: Vec<LevelContext>,
     missing_paths_buffer: DequeStack<PathMetadata>,
 }
@@ -195,10 +195,10 @@ impl ValueParserState {
             Self {
                 struct_context_stack: vec![StructContext::new(
                     schema.fields().to_vec(),
-                    PathVector::default(),
+                    SchemaPath::default(),
                 )],
                 repetition_context_stack: vec![],
-                prev_path: PathVector::default(),
+                prev_path: SchemaPath::default(),
                 level_context_stack: vec![LevelContext::default()],
                 missing_paths_buffer: DequeStack::new(),
             }
@@ -213,7 +213,7 @@ impl ValueParserState {
         self.level_context_stack.last()
     }
 
-    fn increment_repetition_index(&mut self, path: &PathVector) {
+    fn increment_repetition_index(&mut self, path: &SchemaPath) {
         self.repetition_context_stack
             .last_mut()
             .unwrap_or_else(|| {
@@ -230,7 +230,7 @@ impl ValueParserState {
     /// When a level transition is detected, this method prunes the internal stacks. A level
     /// transition occurs when the traversal path changes direction from going downwards to either
     /// sideways or upwards in the value tree.
-    fn transition_to(&mut self, curr_path: &PathVector) {
+    fn transition_to(&mut self, curr_path: &SchemaPath) {
         self.prune_stacks(curr_path);
 
         // Saves the current path for the next traversal step. Each call to this method requires the
@@ -248,7 +248,7 @@ impl ValueParserState {
     ///     - list iterator stack: tracks position of repeated item during traversal
     ///
     /// After pruning, the top of all the stacks will align with the currently visited node.
-    fn prune_stacks(&mut self, curr_path: &PathVector) {
+    fn prune_stacks(&mut self, curr_path: &SchemaPath) {
         // Skip pruning if we are going deeper into the tree (not backtracking). A level transition
         // occurs only when moving to either siblings or ancestors.
         if curr_path.len() > self.prev_path.len() {
@@ -277,10 +277,8 @@ impl ValueParserState {
             self.struct_context_stack.pop().unwrap();
         }
 
-        // TODO: add `depth` method to PathVector
-        let curr_depth = curr_path.len();
         while !self.repetition_context_stack.is_empty()
-            && self.repetition_context_stack.last().unwrap().depth() > curr_depth
+            && self.repetition_context_stack.last().unwrap().depth() > curr_path.depth()
         {
             self.repetition_context_stack.pop().unwrap();
         }
@@ -342,7 +340,7 @@ impl<'a> ValueParser<'a> {
     /// - If the field name (derived from path) is not found in the current
     ///   struct context it indicates a logical error. This should have been
     ///   caught earlier during type-checking of parent [`Value::Struct`].
-    fn get_field_by_path(&self, path: &PathVector) -> &Field {
+    fn get_field_by_path(&self, path: &SchemaPath) -> &Field {
         if path.is_root() {
             panic!("Field definition lookup in struct context does not work for root path");
         }
@@ -381,7 +379,7 @@ impl<'a> ValueParser<'a> {
     ///   repetition levels for the current [`Value`] node depends on the
     ///   computed values of the parent [`Value`]. A problem here indicates
     ///   a bug in how the level context stack is maintained.
-    fn push_derived_level_context(&mut self, field: &Field, path: &PathVector) {
+    fn push_derived_level_context(&mut self, field: &Field, path: &SchemaPath) {
         let parent_ctx = self.state.level_context_stack.last().unwrap_or_else(|| {
             panic!(
                 "Level context stack is unexpectedly empty for name '{}' and path '{}'",
@@ -401,7 +399,7 @@ impl<'a> ValueParser<'a> {
     ///
     /// In a nested value there maybe multiple nested list values in a path. The stack makes it
     /// trivial to track the list element index during depth-first traversal at any nesting level.
-    fn push_list_iterator_context(&mut self, field: &Field, path: &PathVector) {
+    fn push_list_iterator_context(&mut self, field: &Field, path: &SchemaPath) {
         self.state
             .repetition_context_stack
             .push(RepetitionContext::new(field.name().to_string(), path.len()));
@@ -416,7 +414,7 @@ impl<'a> ValueParser<'a> {
     /// This context also allows us to identify which optional/repeated fields are missing in the
     /// value and buffer them for generating NULL column values after the present fields are
     /// processed during traversal.
-    fn push_fields_context(&mut self, field: &Field, path: &PathVector) {
+    fn push_fields_context(&mut self, field: &Field, path: &SchemaPath) {
         let fields = self.get_struct_fields(field).to_vec();
 
         self.state
@@ -434,7 +432,7 @@ impl<'a> ValueParser<'a> {
     fn buffer_missing_paths(
         &mut self,
         fields: &[Field],
-        path_prefix: &PathVector,
+        path_prefix: &SchemaPath,
         props: &[(String, Value)],
     ) {
         self.state
@@ -467,19 +465,19 @@ impl<'a> ValueParser<'a> {
         missing_path: &PathMetadata,
     ) -> StripedColumnResult {
         self.state
-            .transition_to(&PathVector::from(missing_path.path()));
+            .transition_to(&SchemaPath::from(missing_path.path()));
 
         let data_type = missing_path.field().data_type();
         match data_type {
             DataType::Boolean | DataType::Integer | DataType::String => Ok(self
                 .primitive_to_column_value(
-                    &PathVector::from(missing_path.path()),
+                    &SchemaPath::from(missing_path.path()),
                     &Value::create_null_or_empty(data_type),
                 )),
             DataType::List(inner) => match inner.as_ref() {
                 DataType::Boolean | DataType::Integer | DataType::String => Ok(self
                     .primitive_to_column_value(
-                        &PathVector::from(missing_path.path()),
+                        &SchemaPath::from(missing_path.path()),
                         &Value::create_null_or_empty(inner.as_ref()),
                     )),
                 DataType::List(_) => {
@@ -503,7 +501,7 @@ impl<'a> ValueParser<'a> {
     ///   and definition levels are unavailable for creating a flattened
     ///   column value. This indicates an internal bug in how the level context
     ///   stack is maintained.
-    fn primitive_to_column_value(&self, path: &PathVector, value: &Value) -> StripedColumnValue {
+    fn primitive_to_column_value(&self, path: &SchemaPath, value: &Value) -> StripedColumnValue {
         // --- Invariant Check ---
         assert!(
             matches!(
@@ -544,7 +542,7 @@ impl<'a> ValueParser<'a> {
     ///   computation. For the root node a zeroed out level context is initialized in state as the
     ///   parent level context. The stack being empty indicates a bug in how the level context stack
     ///   is maintained.
-    fn compute_level_context(&self, path: &PathVector) -> LevelContext {
+    fn compute_level_context(&self, path: &SchemaPath) -> LevelContext {
         let rep_ctx = self
             .state
             .repetition_context_stack
@@ -685,7 +683,7 @@ impl Deref for MissingFields {
 }
 
 fn find_missing_paths(
-    prefix: &PathVector,
+    prefix: &SchemaPath,
     props: &[(String, Value)],
     fields: &[Field],
     paths: &[PathMetadata],
