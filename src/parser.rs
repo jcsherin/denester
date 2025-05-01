@@ -465,19 +465,19 @@ impl<'a> ValueParser<'a> {
         missing_path: &PathMetadata,
     ) -> StripedColumnResult {
         self.state
-            .transition_to(&SchemaPath::from(missing_path.path()));
+            .transition_to(&SchemaPath::from(missing_path.schema_path()));
 
         let data_type = missing_path.field().data_type();
         match data_type {
             DataType::Boolean | DataType::Integer | DataType::String => Ok(self
                 .primitive_to_column_value(
-                    &SchemaPath::from(missing_path.path()),
+                    &SchemaPath::from(missing_path.schema_path()),
                     &Value::create_null_or_empty(data_type),
                 )),
             DataType::List(inner) => match inner.as_ref() {
                 DataType::Boolean | DataType::Integer | DataType::String => Ok(self
                     .primitive_to_column_value(
-                        &SchemaPath::from(missing_path.path()),
+                        &SchemaPath::from(missing_path.schema_path()),
                         &Value::create_null_or_empty(inner.as_ref()),
                     )),
                 DataType::List(_) => {
@@ -694,7 +694,7 @@ fn find_missing_paths(
             let path = prefix.append_name(field_name.to_string());
             paths
                 .iter()
-                .filter(move |path_metadata| path_metadata.path().starts_with(&path))
+                .filter(move |path_metadata| path_metadata.schema_path().starts_with(&path))
                 .cloned()
         })
         .collect()
@@ -993,7 +993,7 @@ impl Iterator for ValueParser<'_> {
                     while let Some(missing) = self.state.missing_paths_buffer.peek() {
                         // Stop because there are no more missing paths which shares the same prefix
                         // as the branch from which transitioned.
-                        if !missing.path().starts_with(&prefix_path) {
+                        if !missing.schema_path().starts_with(&prefix_path) {
                             break;
                         }
 
