@@ -715,28 +715,6 @@ impl<'a> ValueParser<'a> {
         )
     }
 
-    fn get_column_from_scalar_list(
-        &self,
-        path: &PathVector,
-        field: &Field,
-        value: &Value,
-        repetition_level: RepetitionLevel,
-        definition_level: DefinitionLevel,
-    ) -> Result<StripedColumnValue, ParseError<'a>> {
-        if !field.is_optional() && value.is_null() {
-            return Err(ParseError::ListItemNonNullable {
-                path: path.to_vec(),
-                field: field.data_type().clone(),
-            });
-        }
-
-        Ok(StripedColumnValue::new(
-            value.clone(),
-            repetition_level,
-            definition_level,
-        ))
-    }
-
     /// Computes level context for a list element based on its index.
     ///
     /// To identify the start of a list, the computed repetition level will always match its
@@ -1075,13 +1053,11 @@ impl<'a> Iterator for ValueParser<'a> {
                                                 let ctx = self.compute_level_context(&path);
                                                 self.state.increment_repetition_index(&path);
 
-                                                return Some(self.get_column_from_scalar_list(
-                                                    &path,
-                                                    &field,
-                                                    value,
+                                                return Some(Ok(StripedColumnValue::new(
+                                                    value.clone(),
                                                     ctx.repetition_level,
                                                     ctx.definition_level,
-                                                ));
+                                                )));
                                             }
                                             (DataType::Struct(fields), Value::Struct(props)) => {
                                                 // Struct values are handled differently from scalar list elements. The
