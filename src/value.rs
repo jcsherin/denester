@@ -311,37 +311,6 @@ impl Value {
     }
 }
 
-/// TODO: add docs
-#[derive(Debug)]
-pub enum TypeCheckError {
-    DataTypeMismatch {
-        value: Value,
-        field: Field,
-    },
-    RequiredFieldIsNull {
-        path: Vec<String>,
-        field: Field,
-    },
-    RequiredFieldsAreMissing {
-        missing: Vec<String>,
-        path: Vec<String>,
-    },
-    StructSchemaMismatch {
-        props: Vec<(String, Value)>,
-        fields: Vec<Field>,
-    },
-    StructDuplicateProperty {
-        dup: String,
-        props: Vec<(String, Value)>,
-        fields: Vec<Field>,
-    },
-    StructUnknownProperty {
-        unknown: String,
-        props: Vec<(String, Value)>,
-        fields: Vec<Field>,
-    },
-}
-
 /// A depth-first iterator for [`Value`].
 ///
 /// The iterator works like a cursor which visits every node in the [`Value`]
