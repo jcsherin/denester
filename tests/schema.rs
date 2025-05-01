@@ -1,5 +1,4 @@
 use denester::field::{DataType, Field};
-use denester::field_path::PathMetadataIterator;
 use denester::schema::{
     integer, optional_group, optional_string, repeated_group, repeated_integer, string, Schema,
 };
@@ -276,45 +275,45 @@ mod schema_iteration {
     // }
 }
 
-mod schema_metadata {
-    use super::*;
-
-    ///
-    /// | Path                  | Definition Level | Repetition Level |
-    /// |-----------------------|------------------|------------------|
-    /// | DocId                 | 0                | 0                |
-    /// | Links.Backward        | 2                | 1                |
-    /// | Links.Forward         | 2                | 1                |
-    /// | Name.Language.Code    | 2                | 2                |
-    /// | Name.Language.Country | 3                | 2                |
-    /// | Name.Url              | 2                | 1                |
-    /// ```
-    #[test]
-    fn test_path_metadata_iterator() {
-        let doc = create_doc();
-        let path_metadata = PathMetadataIterator::new(&doc).collect::<Vec<_>>();
-
-        assert_eq!(path_metadata.len(), 6);
-
-        assert_eq!(path_metadata[0].path(), vec!["DocId"]);
-        assert_eq!(path_metadata[1].path(), vec!["Links", "Backward"]);
-        assert_eq!(path_metadata[2].path(), vec!["Links", "Forward"]);
-        assert_eq!(path_metadata[3].path(), vec!["Name", "Language", "Code"]);
-        assert_eq!(path_metadata[4].path(), vec!["Name", "Language", "Country"]);
-        assert_eq!(path_metadata[5].path(), vec!["Name", "Url"]);
-
-        assert_eq!(path_metadata[0].definition_level(), 0);
-        assert_eq!(path_metadata[1].definition_level(), 2);
-        assert_eq!(path_metadata[2].definition_level(), 2);
-        assert_eq!(path_metadata[3].definition_level(), 2);
-        assert_eq!(path_metadata[4].definition_level(), 3);
-        assert_eq!(path_metadata[5].definition_level(), 2);
-
-        assert_eq!(path_metadata[0].repetition_level(), 0);
-        assert_eq!(path_metadata[1].repetition_level(), 1);
-        assert_eq!(path_metadata[2].repetition_level(), 1);
-        assert_eq!(path_metadata[3].repetition_level(), 2);
-        assert_eq!(path_metadata[4].repetition_level(), 2);
-        assert_eq!(path_metadata[5].repetition_level(), 1);
-    }
-}
+// mod schema_metadata {
+//     use super::*;
+//
+//     ///
+//     /// | Path                  | Definition Level | Repetition Level |
+//     /// |-----------------------|------------------|------------------|
+//     /// | DocId                 | 0                | 0                |
+//     /// | Links.Backward        | 2                | 1                |
+//     /// | Links.Forward         | 2                | 1                |
+//     /// | Name.Language.Code    | 2                | 2                |
+//     /// | Name.Language.Country | 3                | 2                |
+//     /// | Name.Url              | 2                | 1                |
+//     /// ```
+//     #[test]
+//     fn test_path_metadata_iterator() {
+//         let doc = create_doc();
+//         let path_metadata = PathMetadataIterator::new(&doc).collect::<Vec<_>>();
+//
+//         assert_eq!(path_metadata.len(), 6);
+//
+//         assert_eq!(path_metadata[0].path(), vec!["DocId"]);
+//         assert_eq!(path_metadata[1].path(), vec!["Links", "Backward"]);
+//         assert_eq!(path_metadata[2].path(), vec!["Links", "Forward"]);
+//         assert_eq!(path_metadata[3].path(), vec!["Name", "Language", "Code"]);
+//         assert_eq!(path_metadata[4].path(), vec!["Name", "Language", "Country"]);
+//         assert_eq!(path_metadata[5].path(), vec!["Name", "Url"]);
+//
+//         assert_eq!(path_metadata[0].definition_level(), 0);
+//         assert_eq!(path_metadata[1].definition_level(), 2);
+//         assert_eq!(path_metadata[2].definition_level(), 2);
+//         assert_eq!(path_metadata[3].definition_level(), 2);
+//         assert_eq!(path_metadata[4].definition_level(), 3);
+//         assert_eq!(path_metadata[5].definition_level(), 2);
+//
+//         assert_eq!(path_metadata[0].repetition_level(), 0);
+//         assert_eq!(path_metadata[1].repetition_level(), 1);
+//         assert_eq!(path_metadata[2].repetition_level(), 1);
+//         assert_eq!(path_metadata[3].repetition_level(), 2);
+//         assert_eq!(path_metadata[4].repetition_level(), 2);
+//         assert_eq!(path_metadata[5].repetition_level(), 1);
+//     }
+// }

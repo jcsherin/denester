@@ -13,7 +13,7 @@
 
 mod error;
 pub mod field;
-pub mod field_path;
+mod field_path;
 pub mod parser;
 pub mod schema;
 mod schema_path;
@@ -30,4 +30,4 @@ pub type DefinitionLevel = u8;
 /// Represents the computed repetition level of a flattened value
 pub type RepetitionLevel = u8;
 /// Represents the distinct repeated fields leading to a flattened value
-pub type RepetitionDepth = u8;
+pub(crate) type RepetitionDepth = u8;

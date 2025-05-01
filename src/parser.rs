@@ -148,7 +148,7 @@ impl<T> Iterator for DequeStack<T> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct StructContext {
+struct StructContext {
     fields: Vec<Field>,
     path: SchemaPath,
 }

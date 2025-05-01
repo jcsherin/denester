@@ -18,21 +18,21 @@ impl<'a> FieldLevel<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct FieldPath {
+struct FieldPath {
     field: Field,
     path: SchemaPath,
 }
 
 impl FieldPath {
-    pub(crate) fn new(field: Field, path: SchemaPath) -> Self {
+    fn new(field: Field, path: SchemaPath) -> Self {
         Self { field, path }
     }
 
-    pub(crate) fn field(&self) -> &Field {
+    fn field(&self) -> &Field {
         &self.field
     }
 
-    pub(crate) fn path(&self) -> &SchemaPath {
+    fn path(&self) -> &SchemaPath {
         &self.path
     }
 }
@@ -44,12 +44,12 @@ impl Display for FieldPath {
 }
 
 #[derive(Debug)]
-pub struct FieldPathIterator<'a> {
+struct FieldPathIterator<'a> {
     levels: Vec<FieldLevel<'a>>,
 }
 
 impl<'a> FieldPathIterator<'a> {
-    pub fn new(schema: &'a Schema) -> Self {
+    fn new(schema: &'a Schema) -> Self {
         Self {
             levels: vec![FieldLevel::new(
                 schema.fields().iter(),
@@ -60,7 +60,7 @@ impl<'a> FieldPathIterator<'a> {
 }
 
 impl Iterator for FieldPathIterator<'_> {
-    type Item = FieldPath;
+    type Item = (Field, SchemaPath);
 
     /**
     message Order {
@@ -106,13 +106,13 @@ impl Iterator for FieldPathIterator<'_> {
 
                 match field.data_type() {
                     DataType::Boolean | DataType::Integer | DataType::String => {
-                        return Some(FieldPath::new(field.clone(), path))
+                        return Some((field.clone(), path))
                     }
                     DataType::List(datatype) => match datatype.as_ref() {
                         DataType::Struct(fields) => {
                             self.levels.push(FieldLevel::new(fields.iter(), path))
                         }
-                        _ => return Some(FieldPath::new(field.clone(), path)),
+                        _ => return Some((field.clone(), path)),
                     },
                     DataType::Struct(fields) => {
                         self.levels.push(FieldLevel::new(fields.iter(), path))
@@ -128,14 +128,15 @@ impl Iterator for FieldPathIterator<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct PathMetadata {
+pub(crate) struct PathMetadata {
     field_path: FieldPath,
     definition_level: DefinitionLevel,
     repetition_level: RepetitionLevel,
 }
 
 impl PathMetadata {
-    pub fn new(schema: &Schema, field_path: FieldPath) -> Self {
+    fn new(schema: &Schema, field: &Field, schema_path: &SchemaPath) -> Self {
+        let field_path = FieldPath::new(field.clone(), schema_path.clone());
         let (definition_level, repetition_level) = Self::compute_levels(schema, &field_path);
 
         Self {
@@ -145,28 +146,12 @@ impl PathMetadata {
         }
     }
 
-    pub fn path(&self) -> &[String] {
+    pub(crate) fn path(&self) -> &[String] {
         self.field_path.path()
     }
 
-    pub fn definition_level(&self) -> DefinitionLevel {
-        self.definition_level
-    }
-
-    pub fn repetition_level(&self) -> RepetitionLevel {
-        self.repetition_level
-    }
-
-    pub fn field(&self) -> &Field {
+    pub(crate) fn field(&self) -> &Field {
         self.field_path.field()
-    }
-
-    pub fn max_repetition_level(&self) -> u8 {
-        self.repetition_level
-    }
-
-    pub fn max_definition_level(&self) -> u8 {
-        self.definition_level
     }
 
     fn compute_levels(schema: &Schema, field_path: &FieldPath) -> (u8, u8) {
@@ -226,7 +211,7 @@ impl Display for PathMetadata {
 }
 
 #[derive(Debug)]
-pub struct PathMetadataIterator<'a> {
+pub(crate) struct PathMetadataIterator<'a> {
     schema: &'a Schema,
     field_path_iter: FieldPathIterator<'a>,
 }
@@ -246,7 +231,7 @@ impl Iterator for PathMetadataIterator<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         self.field_path_iter
             .next()
-            .map(|field_path| PathMetadata::new(self.schema, field_path))
+            .map(|(field, schema_path)| PathMetadata::new(self.schema, &field, &schema_path))
     }
 }
 
@@ -288,13 +273,13 @@ mod tests {
         let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
         assert_eq!(paths.len(), 3);
 
-        assert_eq!(*paths[0].path(), SchemaPath::from(&["id"][..]));
-        assert_eq!(*paths[1].path(), SchemaPath::from(&["name"][..]));
-        assert_eq!(*paths[2].path(), SchemaPath::from(&["active"][..]));
+        assert_eq!(paths[0].1, SchemaPath::from(&["id"][..]));
+        assert_eq!(paths[1].1, SchemaPath::from(&["name"][..]));
+        assert_eq!(paths[2].1, SchemaPath::from(&["active"][..]));
 
-        assert_eq!(paths[0].field.data_type(), &DataType::Integer);
-        assert_eq!(paths[1].field.data_type(), &DataType::String);
-        assert_eq!(paths[2].field.data_type(), &DataType::Boolean);
+        assert_eq!(paths[0].0.data_type(), &DataType::Integer);
+        assert_eq!(paths[1].0.data_type(), &DataType::String);
+        assert_eq!(paths[2].0.data_type(), &DataType::Boolean);
     }
 
     #[test]
@@ -309,13 +294,13 @@ mod tests {
         let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
         assert_eq!(paths.len(), 3);
 
-        assert_eq!(*paths[0].path(), SchemaPath::from(&["user", "id"][..]));
-        assert_eq!(*paths[1].path(), SchemaPath::from(&["user", "name"][..]));
-        assert_eq!(*paths[2].path(), SchemaPath::from(&["user", "active"][..]));
+        assert_eq!(paths[0].1, SchemaPath::from(&["user", "id"][..]));
+        assert_eq!(paths[1].1, SchemaPath::from(&["user", "name"][..]));
+        assert_eq!(paths[2].1, SchemaPath::from(&["user", "active"][..]));
 
-        assert_eq!(paths[0].field.data_type(), &DataType::Integer);
-        assert_eq!(paths[1].field.data_type(), &DataType::String);
-        assert_eq!(paths[2].field.data_type(), &DataType::Boolean);
+        assert_eq!(paths[0].0.data_type(), &DataType::Integer);
+        assert_eq!(paths[1].0.data_type(), &DataType::String);
+        assert_eq!(paths[2].0.data_type(), &DataType::Boolean);
     }
 
     #[test]
@@ -323,7 +308,7 @@ mod tests {
         let schema = SchemaBuilder::new("test").field(integer("id")).build();
         let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
 
-        let id_metadata = PathMetadata::new(&schema, paths[0].clone());
+        let id_metadata = PathMetadata::new(&schema, &paths[0].0, &paths[0].1);
 
         assert_eq!(*id_metadata.field(), integer("id"));
         assert_eq!(id_metadata.path(), &["id"]);
@@ -338,7 +323,7 @@ mod tests {
             .build();
         let paths = FieldPathIterator::new(&schema).collect::<Vec<_>>();
 
-        let path_metadata = PathMetadata::new(&schema, paths[0].clone());
+        let path_metadata = PathMetadata::new(&schema, &paths[0].0, &paths[0].1);
 
         assert_eq!(*path_metadata.field(), string("name"));
         assert_eq!(path_metadata.path(), &["user", "name"]);
