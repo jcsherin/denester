@@ -343,6 +343,10 @@ impl StructContext {
         Self { fields, path }
     }
 
+    fn fields(&self) -> &[Field] {
+        &self.fields
+    }
+
     fn path(&self) -> &PathVector {
         &self.path
     }
@@ -940,16 +944,18 @@ impl<'a> Iterator for ValueParser<'a> {
                             | Value::String(_)
                             | Value::List(_) => return Some(Err(ParseError::RootIsNotStruct)),
                         };
-                        let fields = match &self.state.current_struct_context() {
-                            None => return Some(Err(ParseError::MissingFieldsContext)),
-                            Some(ctx) => &ctx.fields,
-                        };
 
-                        if let Err(err) = Value::type_check_struct_shallow(&path, props, fields) {
+                        let ctx = self
+                            .state
+                            .current_struct_context()
+                            .unwrap_or_else(|| panic!("Struct context stack is empty at root."));
+                        let fields = ctx.fields().to_vec();
+
+                        if let Err(err) = Value::type_check_struct_shallow(&path, props, &fields) {
                             return Some(Err(err.into()));
                         }
 
-                        self.buffer_missing_paths(&fields.to_vec(), &path, props);
+                        self.buffer_missing_paths(&fields, &path, props);
                     }
                     WorkItem::Value(value, path) => {
                         self.state.transition_to(&path);

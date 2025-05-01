@@ -262,15 +262,15 @@ impl Value {
     /// - `fields` - The field definitions extracted from [`DataType::Struct`]`
     pub(crate) fn type_check_struct_shallow(
         path: &PathVector,
-        props: &Vec<(String, Value)>,
-        fields: &Vec<Field>,
+        props: &[(String, Value)],
+        fields: &[Field],
     ) -> Result<(), TypeCheckError> {
         // If there are more named value pairs than defined fields in the struct, it cannot be a
         // valid match. Fewer values are allowed as some fields maybe repeated/optional.
         if props.len() > fields.len() {
             return Err(TypeCheckError::StructSchemaMismatch {
-                props: props.clone(),
-                fields: fields.clone(),
+                props: props.into(),
+                fields: fields.into(),
             });
         }
 
@@ -280,8 +280,8 @@ impl Value {
             if !seen_names.insert(name) {
                 return Err(TypeCheckError::StructDuplicateProperty {
                     dup: name.clone(),
-                    props: props.clone(),
-                    fields: fields.clone(),
+                    props: props.into(),
+                    fields: fields.into(),
                 });
             }
         }
@@ -300,8 +300,8 @@ impl Value {
             if !field_names.contains(name.as_str()) {
                 return Err(TypeCheckError::StructUnknownProperty {
                     unknown: name.clone(),
-                    props: props.clone(),
-                    fields: fields.clone(),
+                    props: props.into(),
+                    fields: fields.into(),
                 });
             }
             present_fields.insert(name.as_str());
