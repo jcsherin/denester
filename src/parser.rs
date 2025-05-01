@@ -716,7 +716,7 @@ impl<'a> ValueParser<'a> {
     ///   computation. For the root node a zeroed out level context is initialized in state as the
     ///   parent level context. The stack being empty indicates a bug in how the level context stack
     ///   is maintained.
-    fn get_level_context(&self, path: &PathVector) -> LevelContext {
+    fn compute_level_context(&self, path: &PathVector) -> LevelContext {
         let rep_ctx = self
             .state
             .repetition_context_stack
@@ -1048,7 +1048,7 @@ impl<'a> Iterator for ValueParser<'a> {
                                                 // level info, but before processing the element. This ensures
                                                 // that the next element will find the iterator in the right
                                                 // state when retrieving level info.
-                                                let ctx = self.get_level_context(&path);
+                                                let ctx = self.compute_level_context(&path);
                                                 match self.advance_list_iterator(&path) {
                                                     Ok(_) => {}
                                                     Err(err) => return Some(Err(err)),
@@ -1069,7 +1069,7 @@ impl<'a> Iterator for ValueParser<'a> {
                                                 // level. These computed values must be propagated down through the entire
                                                 // struct subtree.
 
-                                                let ctx = self.get_level_context(&path);
+                                                let ctx = self.compute_level_context(&path);
                                                 self.state.level_context_stack.push(ctx);
                                                 if let Err(err) = self.advance_list_iterator(&path)
                                                 {
