@@ -256,7 +256,7 @@ impl RepetitionContext {
         self.current_index
     }
 
-    pub fn advance(&mut self) {
+    pub fn increment_index(&mut self) {
         self.current_index += 1;
     }
 }
@@ -388,6 +388,18 @@ impl ValueParserState {
 
     fn current_struct_context(&self) -> Option<&StructContext> {
         self.struct_context_stack.last()
+    }
+
+    fn increment_repetition_index(&mut self, path: &PathVector) {
+        self.repetition_context_stack
+            .last_mut()
+            .unwrap_or_else(|| {
+                panic!(
+                    "Repetition context stack is empty for list element at path '{}'",
+                    path
+                )
+            })
+            .increment_index();
     }
 
     /// Manages state during tree traversal level transitions.
@@ -754,22 +766,6 @@ impl<'a> ValueParser<'a> {
             path: path.clone(),
         }
     }
-
-    /// Advances the list iterator position by one
-    fn advance_list_iterator(&mut self, path: &PathVector) -> Result<(), ParseError<'a>> {
-        let ctx = match self.state.repetition_context_stack.last_mut() {
-            None => {
-                return Err(ParseError::MissingListContext {
-                    path: path.to_vec(),
-                })
-            }
-            Some(ctx) => ctx,
-        };
-
-        ctx.advance();
-
-        Ok(())
-    }
 }
 
 /// Represents a single flattened column value produced by the [`ValueParser`].
@@ -1049,10 +1045,7 @@ impl<'a> Iterator for ValueParser<'a> {
                                                 // that the next element will find the iterator in the right
                                                 // state when retrieving level info.
                                                 let ctx = self.compute_level_context(&path);
-                                                match self.advance_list_iterator(&path) {
-                                                    Ok(_) => {}
-                                                    Err(err) => return Some(Err(err)),
-                                                }
+                                                self.state.increment_repetition_index(&path);
 
                                                 return Some(self.get_column_from_scalar_list(
                                                     &path,
@@ -1071,11 +1064,7 @@ impl<'a> Iterator for ValueParser<'a> {
 
                                                 let ctx = self.compute_level_context(&path);
                                                 self.state.level_context_stack.push(ctx);
-                                                if let Err(err) = self.advance_list_iterator(&path)
-                                                {
-                                                    return Some(Err(err));
-                                                }
-
+                                                self.state.increment_repetition_index(&path);
                                                 self.push_fields_context(&field, &path);
 
                                                 // If props is empty, add the missing paths directly to the work queue
