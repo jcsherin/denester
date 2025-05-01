@@ -1,5 +1,6 @@
 //! Internal representation of a path as a sequence of strings.
 
+use std::fmt::{Display, Formatter};
 use std::ops::{Deref, DerefMut};
 
 /// Provides a type-safe representation for paths in a nested value and
@@ -36,6 +37,16 @@ impl From<&[String]> for PathVector {
 impl From<Vec<String>> for PathVector {
     fn from(vec: Vec<String>) -> Self {
         PathVector(vec)
+    }
+}
+
+impl Display for PathVector {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.is_empty() {
+            write!(f, "<root>")
+        } else {
+            write!(f, "{}", self.join("."))
+        }
     }
 }
 

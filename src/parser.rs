@@ -517,16 +517,14 @@ impl<'a> ValueParser<'a> {
         let ctx = self.state.current_struct_context().unwrap_or_else(|| {
             panic!(
                 "Struct context stack is empty when trying to find field name '{}' for path '{}'",
-                field_name,
-                path.join(".")
+                field_name, path
             )
         });
 
         ctx.find_field(field_name).unwrap_or_else(|| {
             panic!(
                 "Field name '{}' not found in struct context for '{}'",
-                field_name,
-                path.join(".")
+                field_name, path
             )
         })
     }
