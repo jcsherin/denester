@@ -1,53 +1,9 @@
 use denester::field::{DataType, Field};
-use denester::schema::{
-    integer, optional_group, optional_string, repeated_group, repeated_integer, string, Schema,
-};
-use denester::SchemaBuilder;
+use denester::schema::test_utils::create_doc;
 
 /// Integration tests using the example schema from the [Dremel paper]
 ///
-/// These tests verify several aspects using the complex "Document" schema:
-/// 1. Creation of the schema with required, optional and repeated fields.
-/// 2. Enumeration of all field paths using `FieldPathIterator`.
-/// 3. Calculation of max definition and repetition levels using `PathMetadataIterator`.
-///
 /// [Dremel paper]: https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36632.pdf
-///
-/// Create nested schema from the Dremel paper
-///
-/// ```text
-/// message Document {
-///   required int64 DocId;
-///   optional group Links {
-///     repeated int64 Backward;
-///     repeated int64 Forward;
-///   }
-///   repeated group Name {
-///     repeated group Language {
-///       required string Code;
-///       optional string Country;
-///     }
-///     optional string Url;
-///   }
-/// }
-/// ```
-fn create_doc() -> Schema {
-    SchemaBuilder::new("Document")
-        .field(integer("DocId"))
-        .field(optional_group(
-            "Links",
-            vec![repeated_integer("Backward"), repeated_integer("Forward")],
-        ))
-        .field(repeated_group(
-            "Name",
-            vec![
-                repeated_group("Language", vec![string("Code"), optional_string("Country")]),
-                optional_string("Url"),
-            ],
-        ))
-        .build()
-}
-
 mod schema_validation {
     use super::*;
 
@@ -240,80 +196,3 @@ mod schema_validation {
         }
     }
 }
-
-mod schema_iteration {
-
-    // Paths in Document,
-    //     1. DocId
-    //     2. Links.Backward
-    //     3. Links.Forward
-    //     4. Name.Language.Code
-    //     5. Name.Language.Country
-    //     6. Name.Url
-    // ```
-    // TODO: Extract `create_doc()` to Schema and convert this to a unit test inside field_path
-    // #[test]
-    // fn test_field_path_iterator() {
-    //     let doc = create_doc();
-    //     let paths = FieldPathIterator::new(&doc).collect::<Vec<_>>();
-    //
-    //     assert_eq!(paths.len(), 6);
-    //
-    //     assert_eq!(paths[0].path(), vec!["DocId"]);
-    //     assert_eq!(paths[1].path(), vec!["Links", "Backward"]);
-    //     assert_eq!(paths[2].path(), vec!["Links", "Forward"]);
-    //     assert_eq!(paths[3].path(), vec!["Name", "Language", "Code"]);
-    //     assert_eq!(paths[4].path(), vec!["Name", "Language", "Country"]);
-    //     assert_eq!(paths[5].path(), vec!["Name", "Url"]);
-    //
-    //     assert_eq!(paths[0].field().name(), "DocId");
-    //     assert_eq!(paths[1].field().name(), "Backward");
-    //     assert_eq!(paths[2].field().name(), "Forward");
-    //     assert_eq!(paths[3].field().name(), "Code");
-    //     assert_eq!(paths[4].field().name(), "Country");
-    //     assert_eq!(paths[5].field().name(), "Url");
-    // }
-}
-
-// mod schema_metadata {
-//     use super::*;
-//
-//     ///
-//     /// | Path                  | Definition Level | Repetition Level |
-//     /// |-----------------------|------------------|------------------|
-//     /// | DocId                 | 0                | 0                |
-//     /// | Links.Backward        | 2                | 1                |
-//     /// | Links.Forward         | 2                | 1                |
-//     /// | Name.Language.Code    | 2                | 2                |
-//     /// | Name.Language.Country | 3                | 2                |
-//     /// | Name.Url              | 2                | 1                |
-//     /// ```
-//     #[test]
-//     fn test_path_metadata_iterator() {
-//         let doc = create_doc();
-//         let path_metadata = PathMetadataIterator::new(&doc).collect::<Vec<_>>();
-//
-//         assert_eq!(path_metadata.len(), 6);
-//
-//         assert_eq!(path_metadata[0].path(), vec!["DocId"]);
-//         assert_eq!(path_metadata[1].path(), vec!["Links", "Backward"]);
-//         assert_eq!(path_metadata[2].path(), vec!["Links", "Forward"]);
-//         assert_eq!(path_metadata[3].path(), vec!["Name", "Language", "Code"]);
-//         assert_eq!(path_metadata[4].path(), vec!["Name", "Language", "Country"]);
-//         assert_eq!(path_metadata[5].path(), vec!["Name", "Url"]);
-//
-//         assert_eq!(path_metadata[0].definition_level(), 0);
-//         assert_eq!(path_metadata[1].definition_level(), 2);
-//         assert_eq!(path_metadata[2].definition_level(), 2);
-//         assert_eq!(path_metadata[3].definition_level(), 2);
-//         assert_eq!(path_metadata[4].definition_level(), 3);
-//         assert_eq!(path_metadata[5].definition_level(), 2);
-//
-//         assert_eq!(path_metadata[0].repetition_level(), 0);
-//         assert_eq!(path_metadata[1].repetition_level(), 1);
-//         assert_eq!(path_metadata[2].repetition_level(), 1);
-//         assert_eq!(path_metadata[3].repetition_level(), 2);
-//         assert_eq!(path_metadata[4].repetition_level(), 2);
-//         assert_eq!(path_metadata[5].repetition_level(), 1);
-//     }
-// }

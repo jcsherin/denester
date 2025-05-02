@@ -193,6 +193,56 @@ pub fn repeated_group(name: &str, fields: Vec<Field>) -> Field {
     )
 }
 
+#[cfg(feature = "test-utils")]
+pub mod test_utils {
+    use crate::schema::{
+        integer, optional_group, optional_string, repeated_group, repeated_integer, string,
+    };
+    use crate::{Schema, SchemaBuilder};
+
+    /// These tests verify several aspects using the complex "Document" schema:
+    /// 1. Creation of the schema with required, optional and repeated fields.
+    /// 2. Enumeration of all field paths using `FieldPathIterator`.
+    /// 3. Calculation of max definition and repetition levels using `PathMetadataIterator`.
+    ///
+    /// [Dremel paper]: https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36632.pdf
+    ///
+    /// Create nested schema from the Dremel paper
+    ///
+    /// ```text
+    /// message Document {
+    ///   required int64 DocId;
+    ///   optional group Links {
+    ///     repeated int64 Backward;
+    ///     repeated int64 Forward;
+    ///   }
+    ///   repeated group Name {
+    ///     repeated group Language {
+    ///       required string Code;
+    ///       optional string Country;
+    ///     }
+    ///     optional string Url;
+    ///   }
+    /// }
+    /// ```
+    pub fn create_doc() -> Schema {
+        SchemaBuilder::new("Document")
+            .field(integer("DocId"))
+            .field(optional_group(
+                "Links",
+                vec![repeated_integer("Backward"), repeated_integer("Forward")],
+            ))
+            .field(repeated_group(
+                "Name",
+                vec![
+                    repeated_group("Language", vec![string("Code"), optional_string("Country")]),
+                    optional_string("Url"),
+                ],
+            ))
+            .build()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

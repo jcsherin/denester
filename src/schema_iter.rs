@@ -103,6 +103,7 @@ impl Iterator for SchemaLeafIterator<'_> {
 #[cfg(test)]
 mod tests {
     use crate::field::DataType;
+    use crate::schema::test_utils::create_doc;
     use crate::schema::{bool, integer, required_group, string};
     use crate::schema_iter::SchemaLeafIterator;
     use crate::schema_path::SchemaPath;
@@ -154,5 +155,33 @@ mod tests {
         assert_eq!(paths[0].0.data_type(), &DataType::Integer);
         assert_eq!(paths[1].0.data_type(), &DataType::String);
         assert_eq!(paths[2].0.data_type(), &DataType::Boolean);
+    }
+
+    #[test]
+    fn test_field_path_iterator() {
+        let doc = create_doc();
+        let paths = SchemaLeafIterator::new(&doc).collect::<Vec<_>>();
+
+        assert_eq!(paths.len(), 6);
+
+        assert_eq!(paths[0].1, SchemaPath::from(&["DocId"][..]));
+        assert_eq!(paths[1].1, SchemaPath::from(&["Links", "Backward"][..]));
+        assert_eq!(paths[2].1, SchemaPath::from(&["Links", "Forward"][..]));
+        assert_eq!(
+            paths[3].1,
+            SchemaPath::from(&["Name", "Language", "Code"][..])
+        );
+        assert_eq!(
+            paths[4].1,
+            SchemaPath::from(&["Name", "Language", "Country"][..])
+        );
+        assert_eq!(paths[5].1, SchemaPath::from(&["Name", "Url"][..]));
+
+        assert_eq!(paths[0].0.name(), "DocId");
+        assert_eq!(paths[1].0.name(), "Backward");
+        assert_eq!(paths[2].0.name(), "Forward");
+        assert_eq!(paths[3].0.name(), "Code");
+        assert_eq!(paths[4].0.name(), "Country");
+        assert_eq!(paths[5].0.name(), "Url");
     }
 }
