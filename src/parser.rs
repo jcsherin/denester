@@ -3,8 +3,8 @@
 
 use crate::error::{DenesterError, Result};
 use crate::field::{DataType, Field};
-use crate::field_path::{PathMetadata, PathMetadataIterator};
 use crate::schema::Schema;
+use crate::schema_iter::SchemaLeafIterator;
 use crate::schema_path::SchemaPath;
 use crate::value::{DepthFirstValueIterator, Value};
 use crate::{DefinitionLevel, RepetitionDepth, RepetitionLevel};
@@ -174,7 +174,7 @@ impl StructContext {
 #[derive(Debug)]
 enum WorkItem<'a> {
     Value(&'a Value, SchemaPath),
-    MissingValue(PathMetadata),
+    MissingValue(Field, SchemaPath),
     NoMoreWork,
 }
 
@@ -184,7 +184,7 @@ struct ValueParserState {
     repetition_context_stack: Vec<RepetitionContext>,
     prev_path: SchemaPath,
     level_context_stack: Vec<LevelContext>,
-    missing_paths_buffer: DequeStack<PathMetadata>,
+    missing_paths_buffer: DequeStack<(Field, SchemaPath)>,
 }
 
 impl ValueParserState {
@@ -297,9 +297,9 @@ impl ValueParserState {
 /// repetition levels.
 #[derive(Debug)]
 pub struct ValueParser<'a> {
-    /// Precomputed paths and max definition and repetition levels computed
-    /// from [`Schema`].
-    paths: Vec<PathMetadata>,
+    /// The field definition and path from root to leaf for every path defined
+    /// in the schema.
+    leaves: Vec<(Field, SchemaPath)>,
     /// A depth-first iterator over the input nested [`Value`].
     value_iter: Peekable<DepthFirstValueIterator<'a>>,
     /// The internal state machine
@@ -316,14 +316,14 @@ impl<'a> ValueParser<'a> {
     /// * `schema` - Reference schema for validating the input nested value.
     /// * `value_iter` - A depth-first value iterator over the input nested value.
     pub fn new(schema: &'a Schema, value_iter: DepthFirstValueIterator<'a>) -> Self {
-        let paths = PathMetadataIterator::new(schema).collect::<Vec<_>>();
+        let leaves = SchemaLeafIterator::new(schema).collect::<Vec<_>>();
         let state = ValueParserState::new(schema);
 
         let value_iter = value_iter.peekable();
         let work_queue = VecDeque::new();
 
         Self {
-            paths,
+            leaves,
             value_iter,
             state,
             work_queue,
@@ -437,7 +437,7 @@ impl<'a> ValueParser<'a> {
     ) {
         self.state
             .missing_paths_buffer
-            .push_frame(find_missing_paths(path_prefix, props, fields, &self.paths));
+            .push_frame(find_missing_paths(path_prefix, props, fields, &self.leaves));
     }
 
     /// Extracts field definitions from a struct datatype or from a list of structs.
@@ -462,22 +462,19 @@ impl<'a> ValueParser<'a> {
     /// Creates NULL column values for fields present in schema but missing from input data.
     fn create_null_column_for_missing_path(
         &mut self,
-        missing_path: &PathMetadata,
+        field: &Field,
+        missing_path: &SchemaPath,
     ) -> StripedColumnResult {
-        self.state
-            .transition_to(&SchemaPath::from(missing_path.schema_path()));
+        self.state.transition_to(missing_path);
 
-        let data_type = missing_path.field().data_type();
+        let data_type = field.data_type();
         match data_type {
             DataType::Boolean | DataType::Integer | DataType::String => Ok(self
-                .primitive_to_column_value(
-                    &SchemaPath::from(missing_path.schema_path()),
-                    &Value::create_null_or_empty(data_type),
-                )),
+                .primitive_to_column_value(missing_path, &Value::create_null_or_empty(data_type))),
             DataType::List(inner) => match inner.as_ref() {
                 DataType::Boolean | DataType::Integer | DataType::String => Ok(self
                     .primitive_to_column_value(
-                        &SchemaPath::from(missing_path.schema_path()),
+                        missing_path,
                         &Value::create_null_or_empty(inner.as_ref()),
                     )),
                 DataType::List(_) => {
@@ -686,15 +683,15 @@ fn find_missing_paths(
     prefix: &SchemaPath,
     props: &[(String, Value)],
     fields: &[Field],
-    paths: &[PathMetadata],
-) -> Vec<PathMetadata> {
+    leaves: &[(Field, SchemaPath)],
+) -> Vec<(Field, SchemaPath)> {
     MissingFields::with_struct(props, fields)
         .iter()
         .flat_map(|field_name| {
             let path = prefix.append_name(field_name.to_string());
-            paths
+            leaves
                 .iter()
-                .filter(move |path_metadata| path_metadata.schema_path().starts_with(&path))
+                .filter(move |(_, schema_path)| schema_path.starts_with(&path))
                 .cloned()
         })
         .collect()
@@ -902,10 +899,10 @@ impl Iterator for ValueParser<'_> {
                                                         &path,
                                                         props,
                                                         fields,
-                                                        &self.paths,
+                                                        &self.leaves,
                                                     )
                                                     .into_iter()
-                                                    .map(WorkItem::MissingValue);
+                                                    .map(|(f, s)| WorkItem::MissingValue(f, s));
                                                     self.work_queue.extend(missing_paths);
                                                 } else {
                                                     // For non-empty structs, at least one path is present, so we buffer the
@@ -929,8 +926,8 @@ impl Iterator for ValueParser<'_> {
                             }
                         }
                     }
-                    WorkItem::MissingValue(missing) => {
-                        return Some(self.create_null_column_for_missing_path(&missing))
+                    WorkItem::MissingValue(field, missing) => {
+                        return Some(self.create_null_column_for_missing_path(&field, &missing))
                     }
                     WorkItem::NoMoreWork => return None,
                 }
@@ -990,15 +987,15 @@ impl Iterator for ValueParser<'_> {
                     let prefix_path = self.state.prev_path.prefix(path.len());
                     let mut missing_paths = vec![];
 
-                    while let Some(missing) = self.state.missing_paths_buffer.peek() {
+                    while let Some((_, missing)) = self.state.missing_paths_buffer.peek() {
                         // Stop because there are no more missing paths which shares the same prefix
                         // as the branch from which transitioned.
-                        if !missing.schema_path().starts_with(&prefix_path) {
+                        if !missing.starts_with(&prefix_path) {
                             break;
                         }
 
                         let item = self.state.missing_paths_buffer.next().unwrap();
-                        missing_paths.push(WorkItem::MissingValue(item));
+                        missing_paths.push(WorkItem::MissingValue(item.0, item.1));
                     }
 
                     self.work_queue.extend(missing_paths);
@@ -1012,7 +1009,7 @@ impl Iterator for ValueParser<'_> {
                 if !self.state.missing_paths_buffer.is_empty() {
                     let remaining = std::mem::take(&mut self.state.missing_paths_buffer);
                     self.work_queue
-                        .extend(remaining.map(WorkItem::MissingValue));
+                        .extend(remaining.map(|(f, s)| WorkItem::MissingValue(f, s)));
                 }
 
                 // Sentinel to signal the end. The value iterator is exhausted. All remaining

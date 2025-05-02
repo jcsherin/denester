@@ -13,9 +13,9 @@
 
 pub mod error;
 pub mod field;
-mod field_path;
 pub mod parser;
 pub mod schema;
+mod schema_iter;
 mod schema_path;
 pub mod value;
 
