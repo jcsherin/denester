@@ -20,9 +20,10 @@ mod schema_path;
 pub mod value;
 
 pub use self::error::{DenesterError, Result};
+pub use self::field::{DataType, Field};
 pub use self::parser::ValueParser;
-pub use self::schema::SchemaBuilder;
-pub use self::value::ValueBuilder;
+pub use self::schema::{Schema, SchemaBuilder};
+pub use self::value::{Value, ValueBuilder};
 
 /// Represents the path to a value within a nested structure.
 pub type ValuePath = Vec<String>;
