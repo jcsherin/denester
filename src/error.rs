@@ -10,14 +10,19 @@ pub type Result<T, E = DenesterError> = std::result::Result<T, E>;
 pub enum DenesterError {
     /// A required field contained a null value.
     NullValueInRequiredField {
+        /// The field name which is required but contains null.
         field_name: String,
+        /// A string label representing the data type of the required field.
         type_label: String,
+        /// The dot-separated path indicating the location of the field.
         path_str: String,
     },
 
     /// One or more required fields were missing from a struct value.
     MissingOneOrMoreRequiredValues {
+        /// All the required field names in the struct which are missing.
         missing_field_names: Vec<String>,
+        /// The dot-separated path indicating the location of the field.
         path_str: String,
     },
 
@@ -27,28 +32,38 @@ pub enum DenesterError {
     /// An element within a list did not match the list's defined element type
     /// in the schema.
     ListElementDoesNotMatchSchema {
+        /// The field name of the list which contains this element.
         field_name: String,
+        /// The dot-separated path indicating the location of the field.
         path_str: String,
+        /// The list index indicating the location of the schema mismatch.
         index: usize,
     },
 
     /// The type of value did not match the expected field type defined in the
     /// schema.
     ValueTypeDoesNotMatchSchema {
+        /// The field name which did not match the schema data type.
         field_name: String,
+        /// The dot-separated path indicating the location of the field.
         path_str: String,
+        /// A string label representing the expected data type for this field.
         expected_type_label: String,
     },
 
     /// A struct value contained a duplicate property name.
     StructContainsDuplicateProperty {
+        /// The field name which has duplicate entries in the value.
         dup_property_name: String,
+        /// The dot-separated path indicating the location of the field.
         path_str: String,
     },
 
     /// A property name found in the struct is not defined in the schema
     StructContainsUndefinedProperty {
+        /// The field name which is undefined in the struct schema.
         undefined_property_name: String,
+        /// The dot-separated path indicating the location of the field.
         path_str: String,
     },
 }
