@@ -194,6 +194,7 @@ pub fn repeated_group(name: &str, fields: Vec<Field>) -> Field {
 }
 
 #[cfg(feature = "test-utils")]
+#[allow(missing_docs)]
 pub mod test_utils {
     use crate::schema::{
         integer, optional_group, optional_string, repeated_group, repeated_integer, string,
