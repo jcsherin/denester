@@ -18,3 +18,7 @@ required-features = ["test-utils"]
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
+
+[[bench]]
+name = "shredder"
+harness = false
