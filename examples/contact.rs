@@ -62,7 +62,7 @@ fn main() {
         println!("--- New Record ---");
         let parser = ValueParser::new(&schema, value.iter_depth_first());
         for column in parser {
-            println!("{:#?}", column);
+            println!("{column:#?}");
         }
     }
 }

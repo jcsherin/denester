@@ -54,11 +54,11 @@ impl fmt::Display for Schema {
 
         writeln!(&mut buf, "{} {{", self.name)?;
         for field in &self.fields {
-            writeln!(&mut buf, "{}", field)?;
+            writeln!(&mut buf, "{field}")?;
         }
         writeln!(&mut buf, "}}")?;
 
-        write!(f, "{}", buf)
+        write!(f, "{buf}")
     }
 }
 
@@ -278,18 +278,15 @@ mod tests {
 
         assert!(
             !b.is_optional(),
-            "Expected Boolean field to be required, found: {:?}",
-            b
+            "Expected Boolean field to be required, found: {b:?}",
         );
         assert!(
             !i.is_optional(),
-            "Expected Integer field to be required, found: {:?}",
-            i
+            "Expected Integer field to be required, found: {i:?}",
         );
         assert!(
             !s.is_optional(),
-            "Expected String field to be required, found: {:?}",
-            s
+            "Expected String field to be required, found: {s:?}",
         );
     }
 
@@ -301,18 +298,15 @@ mod tests {
 
         assert!(
             ob.is_optional(),
-            "Expected Boolean field to be optional, found {:?}",
-            ob
+            "Expected Boolean field to be optional, found {ob:?}",
         );
         assert!(
             oi.is_optional(),
-            "Expected Integer field to be optional, found {:?}",
-            oi
+            "Expected Integer field to be optional, found {oi:?}",
         );
         assert!(
             os.is_optional(),
-            "Expected String field to be optional, found {:?}",
-            os
+            "Expected String field to be optional, found {os:?}",
         );
     }
 
@@ -325,37 +319,31 @@ mod tests {
         assert_eq!(
             rb.data_type(),
             &DataType::List(Box::new(DataType::Boolean)),
-            "Expected List(Boolean) found, {:?}",
-            rb
+            "Expected List(Boolean) found, {rb:?}",
         );
         assert!(
             rb.is_optional(),
-            "Expected Boolean field to be optional, found: {:?}",
-            rb
+            "Expected Boolean field to be optional, found: {rb:?}",
         );
 
         assert_eq!(
             ri.data_type(),
             &DataType::List(Box::new(DataType::Integer)),
-            "Expected List(Integer) found, {:?}",
-            ri
+            "Expected List(Integer) found, {ri:?}",
         );
         assert!(
             ri.is_optional(),
-            "Expected Integer field to be optional, found {:?}",
-            ri
+            "Expected Integer field to be optional, found {ri:?}",
         );
 
         assert_eq!(
             rs.data_type(),
             &DataType::List(Box::new(DataType::String)),
-            "Expected List(String) found, {:?}",
-            rs
+            "Expected List(String) found, {rs:?}",
         );
         assert!(
             rs.is_optional(),
-            "Expected String field to be optional, found {:?}",
-            rs
+            "Expected String field to be optional, found {rs:?}",
         );
     }
 
@@ -365,7 +353,7 @@ mod tests {
                 assert_eq!(fields.len(), 0);
             }
             other => {
-                panic!("Expected Group to be Struct, found: {:?}", other);
+                panic!("Expected Group to be Struct, found: {other:?}");
             }
         }
     }
@@ -376,13 +364,11 @@ mod tests {
 
         assert!(
             !rg.is_optional(),
-            "Expected Boolean field to be required, found {:?}",
-            rg
+            "Expected Boolean field to be required, found {rg:?}",
         );
         assert!(
             og.is_optional(),
-            "Expected Boolean field to be required, found {:?}",
-            og
+            "Expected Boolean field to be required, found {og:?}",
         );
 
         parse_group(&rg);
@@ -395,8 +381,7 @@ mod tests {
 
         assert!(
             repeated_group.is_optional(),
-            "Expected repeated Group to be optional, found {:?}",
-            repeated_group
+            "Expected repeated Group to be optional, found {repeated_group:?}",
         );
 
         if let DataType::List(groups) = repeated_group.data_type() {

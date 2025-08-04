@@ -18,20 +18,17 @@ fn assert_column_striped_value(
     assert_eq!(
         actual.value(),
         expected_value,
-        "{}: Value mismatch",
-        message_prefix
+        "{message_prefix}: Value mismatch",
     );
     assert_eq!(
         actual.definition_level(),
         expected_def,
-        "{}: Definition level mismatch",
-        message_prefix
+        "{message_prefix}: Definition level mismatch",
     );
     assert_eq!(
         actual.repetition_level(),
         expected_rep,
-        "{}: Repetition level mismatch",
-        message_prefix
+        "{message_prefix}: Repetition level mismatch",
     );
 }
 

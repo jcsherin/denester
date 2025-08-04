@@ -217,10 +217,7 @@ impl ValueParserState {
         self.repetition_context_stack
             .last_mut()
             .unwrap_or_else(|| {
-                panic!(
-                    "Repetition context stack is empty for list element at path '{}'",
-                    path
-                )
+                panic!("Repetition context stack is empty for list element at path '{path}'",)
             })
             .increment_index();
     }
@@ -351,16 +348,12 @@ impl<'a> ValueParser<'a> {
 
         let ctx = self.state.current_struct_context().unwrap_or_else(|| {
             panic!(
-                "Struct context stack is empty when trying to find field name '{}' for path '{}'",
-                field_name, path
+                "Struct context stack is empty when trying to find field name '{field_name}' for path '{path}'",
             )
         });
 
         ctx.find_field(field_name).unwrap_or_else(|| {
-            panic!(
-                "Field name '{}' not found in struct context for '{}'",
-                field_name, path
-            )
+            panic!("Field name '{field_name}' not found in struct context for '{path}'",)
         })
     }
 
@@ -505,17 +498,12 @@ impl<'a> ValueParser<'a> {
                 value,
                 Value::Boolean(_) | Value::Integer(_) | Value::String(_)
             ),
-            "Expected a primitive value for creating a column value at path '{}' but found '{}'",
-            path,
-            value
+            "Expected a primitive value for creating a column value at path '{path}' but found '{value}'",
         );
         // --- End Invariant Check ---
 
         let level_context = self.state.current_level_context().unwrap_or_else(|| {
-            panic!(
-                "Level context stack is unexpectedly empty for path '{}'",
-                path
-            )
+            panic!("Level context stack is unexpectedly empty for path '{path}'",)
         });
 
         StripedColumnValue::new(
@@ -547,16 +535,14 @@ impl<'a> ValueParser<'a> {
             .unwrap_or_else(|| {
                 panic!(
                     "Repetition context stack is empty.\
-             The levels computation for list element in path '{}' cannot proceed.",
-                    path
+             The levels computation for list element in path '{path}' cannot proceed.",
                 )
             });
 
         let level_ctx = self.state.level_context_stack.last().unwrap_or_else(|| {
             panic!(
                 "Level context stack is empty.\
-            The levels computation for list element in path '{}' cannot proceed.",
-                path
+            The levels computation for list element in path '{path}' cannot proceed.",
             )
         });
 
@@ -915,7 +901,7 @@ impl Iterator for ValueParser<'_> {
                                                 return Some(Err(
                                                     DenesterError::ListElementDoesNotMatchSchema {
                                                         field_name: field.name().into(),
-                                                        path_str: format!("{}", path),
+                                                        path_str: format!("{path}"),
                                                         index: current_rep_ctx.current_index(),
                                                     },
                                                 ));

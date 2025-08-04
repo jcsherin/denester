@@ -78,19 +78,17 @@ impl Display for DenesterError {
             } => {
                 write!(
                     f,
-                    "Expected datatype: '{}' value but found NULL instead, field: {} path: {}",
-                    type_label, field_name, path_str
+                    "Expected datatype: '{type_label}' value but found NULL instead, field: {field_name} path: {path_str}",
                 )
             }
             DenesterError::MissingOneOrMoreRequiredValues {
                 missing_field_names,
                 path_str,
             } => {
+                let missing_field_names = missing_field_names.join(", ");
                 write!(
                     f,
-                    "Struct value is missing ({}) field name at path: {}",
-                    missing_field_names.join(","),
-                    path_str
+                    "Struct value is missing ({missing_field_names}) field name at path: {path_str}",
                 )
             }
             DenesterError::InputValueMustBeAStruct => {
@@ -103,9 +101,8 @@ impl Display for DenesterError {
             } => {
                 write!(
                     f,
-                    "List element at index: {} in field: {} at path: {}\
+                    "List element at index: {index} in field: {field_name} at path: {path_str}\
                         does not match the list element type defined in schema",
-                    index, field_name, path_str
                 )
             }
             DenesterError::ValueTypeDoesNotMatchSchema {
@@ -115,8 +112,7 @@ impl Display for DenesterError {
             } => {
                 write!(
                     f,
-                    "Value datatype does not match expected type: {} for field: {} at path: {}",
-                    expected_type_label, field_name, path_str
+                    "Value datatype does not match expected type: {expected_type_label} for field: {field_name} at path: {path_str}",
                 )
             }
             DenesterError::StructContainsDuplicateProperty {
@@ -125,8 +121,7 @@ impl Display for DenesterError {
             } => {
                 write!(
                     f,
-                    "Struct contains duplicate property: {} at path: {}",
-                    dup_property_name, path_str
+                    "Struct contains duplicate property: {dup_property_name} at path: {path_str}",
                 )
             }
             DenesterError::StructContainsUndefinedProperty {
@@ -135,8 +130,7 @@ impl Display for DenesterError {
             } => {
                 write!(
                     f,
-                    "Struct contains undefined property: {} at path: {}",
-                    undefined_property_name, path_str
+                    "Struct contains undefined property: {undefined_property_name} at path: {path_str}",
                 )
             }
         }

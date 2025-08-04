@@ -99,10 +99,7 @@ mod schema_validation {
             }
             DataType::List(name_type) => match name_type.as_ref() {
                 DataType::Boolean | DataType::Integer | DataType::String | DataType::List(_) => {
-                    panic!(
-                        "Name list should contain Struct elements, found: {}",
-                        name_type
-                    )
+                    panic!("Name list should contain Struct elements, found: {name_type}",)
                 }
                 DataType::Struct(fields) => {
                     assert_eq!(
@@ -149,10 +146,7 @@ mod schema_validation {
             }
             DataType::List(language_type) => match language_type.as_ref() {
                 DataType::Boolean | DataType::Integer | DataType::String | DataType::List(_) => {
-                    panic!(
-                        "Language list should contain Struct elements, found: {}",
-                        language_type
-                    )
+                    panic!("Language list should contain Struct elements, found: {language_type}",)
                 }
                 DataType::Struct(fields) => {
                     assert_eq!(

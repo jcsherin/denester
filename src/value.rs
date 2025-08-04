@@ -32,9 +32,9 @@ pub enum Value {
 impl Value {
     fn fmt_with_indent(&self, f: &mut Formatter<'_>, indent: usize) -> fmt::Result {
         match self {
-            Value::Boolean(value) => write!(f, "Value::Boolean({:?})", value,),
-            Value::Integer(value) => write!(f, "Value::Integer({:?})", value),
-            Value::String(value) => write!(f, "Value::String({:?})", value),
+            Value::Boolean(value) => write!(f, "Value::Boolean({value:?})"),
+            Value::Integer(value) => write!(f, "Value::Integer({value:?})"),
+            Value::String(value) => write!(f, "Value::String({value:?})"),
             Value::List(values) if values.is_empty() => write!(f, "Value::List(items: [])"),
             Value::List(values) => {
                 write!(f, "Value::List(items: [")?;
@@ -42,7 +42,7 @@ impl Value {
                     if i > 0 {
                         write!(f, ", ")?
                     }
-                    write!(f, "{}", value)?;
+                    write!(f, "{value}")?;
                 }
                 write!(f, "])")
             }
@@ -51,7 +51,7 @@ impl Value {
                 writeln!(f, "{{")?;
                 for (k, v) in fields {
                     write!(f, "{:indent$}", "", indent = indent + 2)?;
-                    write!(f, "{}: ", k)?;
+                    write!(f, "{k}: ")?;
                     v.fmt_with_indent(f, indent + 2)?;
                     writeln!(f, ",")?;
                 }
@@ -215,7 +215,7 @@ impl Value {
                     Err(DenesterError::NullValueInRequiredField {
                         field_name: field.name().into(),
                         type_label: field.data_type().type_label(),
-                        path_str: format!("{}", path),
+                        path_str: format!("{path}"),
                     })
                 } else {
                     Ok(())
@@ -227,7 +227,7 @@ impl Value {
             }
             _ => Err(DenesterError::ValueTypeDoesNotMatchSchema {
                 field_name: field.name().into(),
-                path_str: format!("{}", path),
+                path_str: format!("{path}"),
                 expected_type_label: field.data_type().type_label(),
             }),
         }
@@ -269,7 +269,7 @@ impl Value {
             if !seen_names.insert(name) {
                 return Err(DenesterError::StructContainsDuplicateProperty {
                     dup_property_name: name.clone(),
-                    path_str: format!("{}", path),
+                    path_str: format!("{path}"),
                 });
             }
         }
@@ -288,7 +288,7 @@ impl Value {
             if !field_names.contains(name.as_str()) {
                 return Err(DenesterError::StructContainsUndefinedProperty {
                     undefined_property_name: name.clone(),
-                    path_str: format!("{}", path),
+                    path_str: format!("{path}"),
                 });
             }
             present_fields.insert(name.as_str());
@@ -303,7 +303,7 @@ impl Value {
                 .collect::<Vec<_>>();
             Err(DenesterError::MissingOneOrMoreRequiredValues {
                 missing_field_names,
-                path_str: format!("{}", path),
+                path_str: format!("{path}"),
             })
         } else {
             Ok(())
