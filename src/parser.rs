@@ -510,6 +510,7 @@ impl<'a> ValueParser<'a> {
             value.clone(),
             level_context.repetition_level,
             level_context.definition_level,
+            path.clone(),
         )
     }
 
@@ -574,6 +575,7 @@ pub struct StripedColumnValue {
     value: Value,
     repetition_level: RepetitionLevel,
     definition_level: DefinitionLevel,
+    schema_path: SchemaPath,
 }
 
 impl StripedColumnValue {
@@ -581,11 +583,13 @@ impl StripedColumnValue {
         value: Value,
         repetition_level: RepetitionLevel,
         definition_level: DefinitionLevel,
+        schema_path: SchemaPath,
     ) -> Self {
         StripedColumnValue {
             value,
             repetition_level,
             definition_level,
+            schema_path,
         }
     }
 
@@ -604,6 +608,11 @@ impl StripedColumnValue {
     /// Returns the computed repetition level.
     pub fn repetition_level(&self) -> RepetitionLevel {
         self.repetition_level
+    }
+
+    /// Returns the nested path.
+    pub fn path(&self) -> String {
+        format!("{}", self.schema_path)
     }
 }
 
@@ -814,7 +823,7 @@ impl Iterator for ValueParser<'_> {
                                 assert_eq!(current_rep_ctx.field_name(), field.name(),
                                            "Field name mismatch. Found '{}, but expected '{}'\
                                             in repetition context when processing list element in path '{}'",
-                                            current_rep_ctx.field_name(), field.name(), path
+                                           current_rep_ctx.field_name(), field.name(), path
                                 );
                                 // --- End Invariant Check ---
 
@@ -855,6 +864,7 @@ impl Iterator for ValueParser<'_> {
                                                     value.clone(),
                                                     ctx.repetition_level,
                                                     ctx.definition_level,
+                                                    path.clone(),
                                                 )));
                                             }
                                             (DataType::Struct(fields), Value::Struct(props)) => {

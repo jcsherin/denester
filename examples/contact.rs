@@ -1,14 +1,18 @@
-use denester::schema::{repeated_group, string};
-use denester::{SchemaBuilder, Value, ValueBuilder, ValueParser};
+use denester::schema::{optional_string, repeated_group};
+use denester::{Schema, SchemaBuilder, Value, ValueBuilder, ValueParser};
 
-fn main() {
-    let schema = SchemaBuilder::new("Contact")
-        .field(string("name"))
+fn contact_schema() -> Schema {
+    SchemaBuilder::new("Contact")
+        .field(optional_string("name"))
         .field(repeated_group(
             "phones",
-            vec![string("number"), string("phone_type")],
+            vec![optional_string("number"), optional_string("phone_type")],
         ))
-        .build();
+        .build()
+}
+
+fn main() {
+    let schema = contact_schema();
 
     let values: Vec<Value> = vec![
         // Alice: has a name and two phones
@@ -46,7 +50,7 @@ fn main() {
                     .build()],
             )
             .build(),
-        // Eve: has phones but no name
+        // _: has a phone but no name
         ValueBuilder::default()
             .repeated(
                 "phones",
@@ -57,12 +61,26 @@ fn main() {
             .build(),
     ];
 
-    // To parse multiple root values, we iterate through them and create a new parser for each.
     for value in values {
-        println!("--- New Record ---");
+        println!("--- Shredding New Value ---");
+
         let parser = ValueParser::new(&schema, value.iter_depth_first());
-        for column in parser {
-            println!("{column:#?}");
-        }
+        parser.into_iter().for_each(|parsed| {
+            if let Ok(shredded) = parsed {
+                let formatted_value = if let Value::String(v) = shredded.value() {
+                    format!("{v:?}")
+                } else {
+                    panic!("Expected a shredded value")
+                };
+                let path = shredded.path();
+                let def = shredded.definition_level();
+                let rep = shredded.repetition_level();
+
+                println!(
+                    "| {formatted_value:<width$} | {path:<width$} | def={def} | rep={rep} |",
+                    width = 24
+                );
+            }
+        })
     }
 }
