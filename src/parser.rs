@@ -249,7 +249,7 @@ impl ValueParserState {
     fn prune_stacks(&mut self, curr_path: &SchemaPath) {
         // Skip pruning if we are going deeper into the tree (not backtracking). A level transition
         // occurs only when moving to either siblings or ancestors.
-        if curr_path.len() > self.prev_path.len() {
+        if curr_path.starts_with(&self.prev_path) && curr_path.len() > self.prev_path.len() {
             return;
         }
 

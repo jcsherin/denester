@@ -1,7 +1,7 @@
 use denester::parser::StripedColumnValue;
 use denester::schema::{
-    integer, optional_group, optional_integer, repeated_group, repeated_integer, required_group,
-    string,
+    integer, optional_group, optional_integer, optional_string, repeated_group, repeated_integer,
+    required_group, string,
 };
 use denester::value::Value;
 use denester::{DefinitionLevel, RepetitionLevel};
@@ -592,6 +592,388 @@ mod repeated_fields {
             0,
             0,
             "Parsed[1] (b.y - missing)",
+        );
+    }
+
+    #[test]
+    fn test_missing_optional_repeated_group() {
+        // message Contact {
+        //   optional string name;
+        //   repeated group phones {
+        //     optional string number;
+        //     optional string phone_type;
+        //   }
+        // }
+        let schema = SchemaBuilder::new("Contact")
+            .field(optional_string("name"))
+            .field(repeated_group(
+                "phones",
+                vec![optional_string("number"), optional_string("phone_type")],
+            ))
+            .build();
+
+        // { name: "Bob" } // phones group is missing
+        let value = ValueBuilder::default().field("name", "Bob").build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        // Expected output:
+        // | value                    | path              | def | rep |
+        // |--------------------------|-------------------|-----|-----|
+        // | Some("Bob")              | name              | 1   | 0   |
+        // | None                     | phones.number     | 0   | 0   |
+        // | None                     | phones.phone_type | 0   | 0   |
+        assert_eq!(parsed.len(), 3);
+
+        // name
+        assert_column_striped_value(
+            &parsed[0],
+            &Value::String(Some("Bob".to_string())),
+            1,
+            0,
+            "Parsed[0] (name)",
+        );
+
+        // phones.number
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::String(None),
+            0,
+            0,
+            "Parsed[1] (phones.number - missing)",
+        );
+
+        // phones.phone_type
+        assert_column_striped_value(
+            &parsed[2],
+            &Value::String(None),
+            0,
+            0,
+            "Parsed[2] (phones.phone_type - missing)",
+        );
+    }
+
+    #[test]
+    fn test_empty_optional_repeated_group() {
+        // message Contact {
+        //   optional string name;
+        //   repeated group phones {
+        //     optional string number;
+        //     optional string phone_type;
+        //   }
+        // }
+        let schema = SchemaBuilder::new("Contact")
+            .field(optional_string("name"))
+            .field(repeated_group(
+                "phones",
+                vec![optional_string("number"), optional_string("phone_type")],
+            ))
+            .build();
+
+        // { name: "Charlie", phones: [] }
+        let value = ValueBuilder::default()
+            .field("name", "Charlie")
+            .repeated("phones", Vec::<Value>::new())
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        // Expected output:
+        // | value                    | path              | def | rep |
+        // |--------------------------|-------------------|-----|-----|
+        // | Some("Charlie")          | name              | 1   | 0   |
+        // | None                     | phones.number     | 1   | 0   |
+        // | None                     | phones.phone_type | 1   | 0   |
+        assert_eq!(parsed.len(), 3);
+
+        // name
+        assert_column_striped_value(
+            &parsed[0],
+            &Value::String(Some("Charlie".to_string())),
+            1,
+            0,
+            "Parsed[0] (name)",
+        );
+
+        // phones.number
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::String(None),
+            1,
+            0,
+            "Parsed[1] (phones.number - empty)",
+        );
+
+        // phones.phone_type
+        assert_column_striped_value(
+            &parsed[2],
+            &Value::String(None),
+            1,
+            0,
+            "Parsed[2] (phones.phone_type - empty)",
+        );
+    }
+
+    #[test]
+    fn test_optional_repeated_group_with_single_item() {
+        // message Contact {
+        //   optional string name;
+        //   repeated group phones {
+        //     optional string number;
+        //     optional string phone_type;
+        //   }
+        // }
+        let schema = SchemaBuilder::new("Contact")
+            .field(optional_string("name"))
+            .field(repeated_group(
+                "phones",
+                vec![optional_string("number"), optional_string("phone_type")],
+            ))
+            .build();
+
+        // { name: "Diana", phones: [{ number: "555-9999", phone_type: "Work" }] }
+        let value = ValueBuilder::default()
+            .field("name", "Diana")
+            .repeated(
+                "phones",
+                vec![ValueBuilder::default()
+                    .field("number", "555-9999")
+                    .field("phone_type", "Work")
+                    .build()],
+            )
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        // Expected output:
+        // | value                    | path              | def | rep |
+        // |--------------------------|-------------------|-----|-----|
+        // | Some("Diana")            | name              | 1   | 0   |
+        // | Some("555-9999")         | phones.number     | 2   | 0   |
+        // | Some("Work")             | phones.phone_type | 2   | 0   |
+        assert_eq!(parsed.len(), 3);
+
+        // name
+        assert_column_striped_value(
+            &parsed[0],
+            &Value::String(Some("Diana".to_string())),
+            1,
+            0,
+            "Parsed[0] (name)",
+        );
+
+        // phones.number
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::String(Some("555-9999".to_string())),
+            2,
+            0,
+            "Parsed[1] (phones.number)",
+        );
+
+        // phones.phone_type
+        assert_column_striped_value(
+            &parsed[2],
+            &Value::String(Some("Work".to_string())),
+            2,
+            0,
+            "Parsed[2] (phones.phone_type)",
+        );
+    }
+
+    #[test]
+    fn test_optional_repeated_group_with_missing_name_and_number() {
+        // message Contact {
+        //   optional string name;
+        //   repeated group phones {
+        //     optional string number;
+        //     optional string phone_type;
+        //   }
+        // }
+        let schema = SchemaBuilder::new("Contact")
+            .field(optional_string("name"))
+            .field(repeated_group(
+                "phones",
+                vec![optional_string("number"), optional_string("phone_type")],
+            ))
+            .build();
+
+        // { phones: [{ phone_type: "Mobile" }] }
+        let value = ValueBuilder::default()
+            .repeated(
+                "phones",
+                vec![ValueBuilder::default()
+                    .field("phone_type", "Mobile")
+                    .build()],
+            )
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        // Expected output:
+        // | value                    | path              | def | rep |
+        // |--------------------------|-------------------|-----|-----|
+        // | Some("Mobile")           | phones.phone_type | 2   | 0   |
+        // | None                     | phones.number     | 1   | 0   |
+        // | None                     | name              | 0   | 0   |
+        assert_eq!(parsed.len(), 3);
+
+        // phones.phone_type
+        assert_column_striped_value(
+            &parsed[0],
+            &Value::String(Some("Mobile".to_string())),
+            2,
+            0,
+            "Parsed[0] (phones.phone_type)",
+        );
+
+        // phones.number
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::String(None),
+            1,
+            0,
+            "Parsed[1] (phones.number - missing)",
+        );
+
+        // name
+        assert_column_striped_value(
+            &parsed[2],
+            &Value::String(None),
+            0,
+            0,
+            "Parsed[2] (name - missing)",
+        );
+    }
+
+    #[test]
+    fn test_optional_repeated_group_with_multiple_items() {
+        // message Contact {
+        //   optional string name;
+        //   repeated group phones {
+        //     optional string number;
+        //     optional string phone_type;
+        //   }
+        // }
+        let schema = SchemaBuilder::new("Contact")
+            .field(optional_string("name"))
+            .field(repeated_group(
+                "phones",
+                vec![optional_string("number"), optional_string("phone_type")],
+            ))
+            .build();
+
+        // { name: "Alice", phones: [{number: "555-1111"}, {phone_type: "Home"}, {number: "555-3333", phone_type: "Work"}] }
+        let value = ValueBuilder::default()
+            .field("name", "Alice")
+            .repeated(
+                "phones",
+                vec![
+                    ValueBuilder::default().field("number", "555-1111").build(),
+                    ValueBuilder::default().field("phone_type", "Home").build(),
+                    ValueBuilder::default()
+                        .field("number", "555-3333")
+                        .field("phone_type", "Work")
+                        .build(),
+                ],
+            )
+            .build();
+
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+        let parsed = parser
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        // Expected output:
+        // | value                    | path              | def | rep |
+        // |--------------------------|-------------------|-----|-----|
+        // | Some("Alice")            | name              | 1   | 0   |
+        // | Some("555-1111")         | phones.number     | 2   | 0   |
+        // | None                     | phones.phone_type | 1   | 0   |
+        // | Some("Home")             | phones.phone_type | 2   | 1   |
+        // | None                     | phones.number     | 1   | 1   |
+        // | Some("555-3333")         | phones.number     | 2   | 1   |
+        // | Some("Work")             | phones.phone_type | 2   | 1   |
+        assert_eq!(parsed.len(), 7);
+
+        // name
+        assert_column_striped_value(
+            &parsed[0],
+            &Value::String(Some("Alice".to_string())),
+            1,
+            0,
+            "Parsed[0] (name)",
+        );
+
+        // phones[0].number
+        assert_column_striped_value(
+            &parsed[1],
+            &Value::String(Some("555-1111".to_string())),
+            2,
+            0,
+            "Parsed[1] (phones[0].number)",
+        );
+
+        // phones[0].phone_type (missing)
+        assert_column_striped_value(
+            &parsed[2],
+            &Value::String(None),
+            1,
+            0,
+            "Parsed[2] (phones[0].phone_type - missing)",
+        );
+
+        // phones[1].phone_type
+        assert_column_striped_value(
+            &parsed[3],
+            &Value::String(Some("Home".to_string())),
+            2,
+            1,
+            "Parsed[3] (phones[1].phone_type)",
+        );
+
+        // phones[1].number (missing)
+        assert_column_striped_value(
+            &parsed[4],
+            &Value::String(None),
+            1,
+            1,
+            "Parsed[4] (phones[1].number - missing)",
+        );
+
+        // phones[2].number
+        assert_column_striped_value(
+            &parsed[5],
+            &Value::String(Some("555-3333".to_string())),
+            2,
+            1,
+            "Parsed[5] (phones[2].number)",
+        );
+
+        // phones[2].phone_type
+        assert_column_striped_value(
+            &parsed[6],
+            &Value::String(Some("Work".to_string())),
+            2,
+            1,
+            "Parsed[6] (phones[2].phone_type)",
         );
     }
 }
