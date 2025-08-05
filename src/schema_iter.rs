@@ -103,7 +103,6 @@ impl Iterator for SchemaLeafIterator<'_> {
 #[cfg(test)]
 mod tests {
     use crate::field::DataType;
-    use crate::schema::test_utils::create_doc;
     use crate::schema::{bool, integer, required_group, string};
     use crate::schema_iter::SchemaLeafIterator;
     use crate::schema_path::SchemaPath;
@@ -159,8 +158,21 @@ mod tests {
 
     #[test]
     fn test_field_path_iterator() {
-        let doc = create_doc();
-        let paths = SchemaLeafIterator::new(&doc).collect::<Vec<_>>();
+        let schema = SchemaBuilder::new("doc")
+            .field(integer("DocId"))
+            .field(required_group(
+                "Links",
+                vec![integer("Backward"), integer("Forward")],
+            ))
+            .field(required_group(
+                "Name",
+                vec![
+                    required_group("Language", vec![string("Code"), string("Country")]),
+                    string("Url"),
+                ],
+            ))
+            .build();
+        let paths = SchemaLeafIterator::new(&schema).collect::<Vec<_>>();
 
         assert_eq!(paths.len(), 6);
 

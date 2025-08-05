@@ -92,7 +92,7 @@ cargo build
 ### Run Tests
 
 ```
-cargo test --features test-utils
+cargo test
 ```
 
 ### Run Benchmarks
