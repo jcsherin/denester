@@ -67,19 +67,7 @@ fn main() {
         let parser = ValueParser::new(&schema, value.iter_depth_first());
         parser.into_iter().for_each(|parsed| {
             if let Ok(shredded) = parsed {
-                let formatted_value = if let Value::String(v) = shredded.value() {
-                    format!("{v:?}")
-                } else {
-                    panic!("Expected a shredded value")
-                };
-                let path = shredded.path();
-                let def = shredded.definition_level();
-                let rep = shredded.repetition_level();
-
-                println!(
-                    "| {formatted_value:<width$} | {path:<width$} | def={def} | rep={rep} |",
-                    width = 24
-                );
+                println!("{shredded}");
             }
         })
     }

@@ -42,7 +42,9 @@ fn main() {
         .build();
 
     let parser = ValueParser::new(&schema, value.iter_depth_first());
-    for column in parser {
-        println!("{column:#?}");
-    }
+    parser.into_iter().for_each(|v| {
+        if let Ok(shredded) = v {
+            println!("{shredded}")
+        }
+    })
 }

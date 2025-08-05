@@ -9,6 +9,7 @@ use crate::schema_path::SchemaPath;
 use crate::value::{DepthFirstValueIterator, Value};
 use crate::{DefinitionLevel, RepetitionDepth, RepetitionLevel};
 use std::collections::{HashSet, VecDeque};
+use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
 use std::ops::Deref;
 
@@ -613,6 +614,21 @@ impl StripedColumnValue {
     /// Returns the nested path.
     pub fn path(&self) -> String {
         format!("{}", self.schema_path)
+    }
+}
+
+impl Display for StripedColumnValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let value = format!("{:?}", self.value);
+        let path = self.path();
+        let def = self.definition_level();
+        let rep = self.repetition_level();
+
+        write!(
+            f,
+            "| {value:<width$} | {path:<width$} | def={def} | rep={rep} |",
+            width = 24
+        )
     }
 }
 
