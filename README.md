@@ -12,7 +12,7 @@ for every field in the schema. Denester eliminates this complexity by internally
 handling value traversal, schema validation, and a state machine for columnar
 shredding.
 
-See a detailed [API comparison with arrow-rs](#api-ergonomics-denester-vs-parquet-rs).
+See a detailed [API comparison with arrow-rs](#comparison-with-arrow-shredding-api)
 
 [Dremel shredding algorithm]: https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36632.pdf
 
@@ -108,164 +108,209 @@ cargo bench --bench shredder
 cargo run --example dremel
 ```
 
-## API Ergonomics: `denester` vs. `parquet-rs`
+## Comparison with Arrow Shredding API
 
-This comparison explores the ergonomic differences between `denester` and the
-production-grade `parquet-rs` library for processing nested data. While
-`parquet-rs` is a powerful, flexible, and high-performance library, `denester`
-proposes an alternative, more streamlined developer experience specifically for
-the task of *shredding* nested structures.
+### 1. Nested Data Definition
 
-The core difference lies in the separation of concerns:
+```rust
+struct Contact {
+    name: Option<String>,
+    phones: Option<Vec<Phone>>,
+}
 
-- **`denester`**: Separates the creation of a nested value from the process of
-  shredding it. This allows for a more declarative and less error-prone
-  approach.
-- **`parquet-rs` (raw API)**: Fuses value creation and shredding into a single,
-  imperative process. The developer is responsible for manually building the
-  columnar (shredded) representation from the beginning.
+struct Phone {
+    number: Option<String>,
+    phone_type: Option<PhoneType>,
+}
 
-### 1. Schema Definition
+enum PhoneType {
+    Home,
+    Work,
+    Mobile,
+}
+```
 
-* **`parquet-rs`:** The schema is defined using `arrow`'s `Schema` and `Field`
-  types. This approach is explicit and gives the developer full control, but it
-  can be verbose.
+### 2. Build the Arrow Schema
 
-  ```rust
-  // Example from parquet-common/src/contact/arrow.rs
-  pub fn get_contact_schema() -> SchemaRef {
-      let phone_struct = DataType::Struct(get_contact_phone_fields().into());
-      let phones_list_field = Field::new("item", phone_struct, true);
+```rust
+use arrow_schema::{DataType, Field, Schema, SchemaRef};
+use std::sync::Arc;
 
-      Arc::new(Schema::new(vec![
-          Arc::from(Field::new("name", DataType::Utf8, true)),
-          Arc::from(Field::new(
-              "phones",
-              DataType::List(Arc::new(phones_list_field)),
-              true,
-          )),
-      ]))
-  }
-  ```
+fn contact_schema() -> SchemaRef {
+    Arc::new(Schema::new(vec![
+        // Contact.name
+        Arc::from(Field::new("name", DataType::Utf8, true)),
 
-* **`denester`:** The `SchemaBuilder` provides a more concise, fluent API that
-  more closely mirrors the conceptual model of the data.
+        // Contact.phones
+        Arc::from(Field::new(
+            "phones",
+            DataType::List(Arc::new(
+                Field::new(
+                    "item",
+                    DataType::Struct(
+                        vec![
+                            // Contact.phones.number
+                            Arc::from(Field::new("number", DataType::Utf8, true)),
+                            // Contact.phones.phone_type
+                            Arc::from(Field::new(
+                                "phone_type",
+                                DataType::Dictionary(
+                                    Box::new(DataType::UInt8),
+                                    Box::new(DataType::Utf8),
+                                ),
+                                true,
+                            )),
+                        ].into(),
+                    ),
+                    true,
+                ),
+            )),
+            true,
+        )),
+    ]))
+}
+```
 
-  ```rust
-  // A comparable schema in `denester`
-  let schema = SchemaBuilder::new("Contact")
-      .field(string("name"))
-      .field(repeated_group(
-          "phones",
-          vec![string("number"), string("phone_type")],
-      ))
-      .build();
-  ```
+### 3. Arrow Shredding
 
-### 2. Data Construction and Shredding
+```rust
+use arrow::array::{
+    ListBuilder, RecordBatch, StringBuilder, StringDictionaryBuilder, StructBuilder,
+};
+use arrow::datatypes::{SchemaRef, UInt8Type};
+use std::error::Error;
+use std::sync::Arc;
 
-This is where the ergonomic contrast is most significant.
+pub const PHONE_NUMBER_FIELD_INDEX: usize = 0;
+pub const PHONE_TYPE_FIELD_INDEX: usize = 1;
 
-* **`parquet-rs`:** Using the raw `arrow` APIs, the developer does not build a
-  nested struct first. Instead, they build the final columnar arrays directly.
-  This requires manually managing builders for each field, iterating through the
-  data, and correctly appending values and nulls to each builder to represent
-  the nested structure. This process is imperative, complex, and
-  boilerplate-heavy.
+pub fn contacts_to_record_batch(
+    schema: SchemaRef,
+    contacts: &[Contact],
+) -> Result<RecordBatch, Box<dyn Error>> {
+    let mut name_builder = StringBuilder::new();
 
-  *Actual implementation from `parquet-common/src/contact/arrow.rs`:*
-  ```rust
-  // This function builds the final columnar arrays directly from the `Contact` structs.
-  pub fn create_record_batch(
-      schema: SchemaRef,
-      contacts: &[Contact],
-  ) -> Result<RecordBatch, Box<dyn Error>> {
-      let mut name_builder = StringBuilder::new();
+    let phone_number_builder = StringBuilder::new();
+    let phone_type_builder = StringDictionaryBuilder::<UInt8Type>::new();
+    let phone_struct_builder = StructBuilder::new(
+        get_contact_phone_fields(),
+        vec![Box::new(phone_number_builder), Box::new(phone_type_builder)],
+    );
 
-      let phone_number_builder = StringBuilder::new();
-      let phone_type_builder = StringDictionaryBuilder::<UInt8Type>::new();
-      let phone_struct_builder = StructBuilder::new(
-          get_contact_phone_fields(),
-          vec![Box::new(phone_number_builder), Box::new(phone_type_builder)],
-      );
+    let mut phones_list_builder = ListBuilder::new(phone_struct_builder);
 
-      let mut phones_list_builder = ListBuilder::new(phone_struct_builder);
+    for contact in contacts {
+        name_builder.append_option(contact.name());
 
-      for contact in contacts {
-          name_builder.append_option(contact.name());
+        if let Some(phones) = contact.phones() {
+            let struct_builder = phones_list_builder.values();
 
-          if let Some(phones) = contact.phones() {
-              let struct_builder = phones_list_builder.values();
+            for phone in phones {
+                struct_builder.append(true);
 
-              for phone in phones {
-                  struct_builder.append(true);
-                  struct_builder
-                      .field_builder::<StringBuilder>(0)
-                      .unwrap()
-                      .append_option(phone.number());
-                  struct_builder
-                      .field_builder::<StringDictionaryBuilder<UInt8Type>>(1)
-                      .unwrap()
-                      .append_option(phone.phone_type().map(AsRef::as_ref));
-              }
-              phones_list_builder.append(true);
-          } else {
-              phones_list_builder.append_null();
-          }
-      }
+                struct_builder
+                    .field_builder::<StringBuilder>(PHONE_NUMBER_FIELD_INDEX)
+                    .unwrap()
+                    .append_option(phone.number());
+                struct_builder
+                    .field_builder::<StringDictionaryBuilder<UInt8Type>>(PHONE_TYPE_FIELD_INDEX)
+                    .unwrap()
+                    .append_option(phone.phone_type().map(AsRef::as_ref));
+            }
 
-      let name_array = Arc::new(name_builder.finish());
-      let phones_array = Arc::new(phones_list_builder.finish());
+            phones_list_builder.append(true);
+        } else {
+            phones_list_builder.append_null();
+        }
+    }
 
-      RecordBatch::try_new(schema, vec![name_array, phones_array]).map_err(Into::into)
-  }
-  ```
+    let name_array = Arc::new(name_builder.finish());
+    let phones_array = Arc::new(phones_list_builder.finish());
 
-* **`denester`:** The process is declarative and separated into two distinct
-  steps:
-    1. **Value Construction:** Create a nested value using the generic
-       `ValueBuilder`. This code is simple and directly reflects the structure
-       of the data you want to represent.
-    2. **Shredding:** Pass the schema and the created value to the
-       `ValueParser`, which handles the entire shredding process automatically.
+    RecordBatch::try_new(schema, vec![name_array, phones_array]).map_err(Into::into)
+}
+```
 
-  *The complete process in `denester`:*
-  ```rust
-  // 1. Value Construction
-  let value = ValueBuilder::default()
-      .field("name", "Alice")
-      .repeated(
-          "phones",
-          vec![
-              ValueBuilder::default()
-                  .field("number", "555-1234")
-                  .field("phone_type", "Home")
-                  .build(),
-              ValueBuilder::default()
-                  .field("number", "555-5678")
-                  .field("phone_type", "Work")
-                  .build(),
-          ],
-      )
-      .build();
+### Denester Shredding
 
-  // 2. Shredding
-  let parser = ValueParser::new(&schema, value.iter_depth_first());
-  for column in parser {
-      // `column` contains the shredded values with correct
-      // definition and repetition levels automatically calculated.
-      println!("{:#?}", column);
-  }
-  ```
+```rust
+use denester::schema::{optional_string, repeated_group};
+use denester::{Schema, SchemaBuilder, Value, ValueBuilder, ValueParser};
 
-### Conclusion
+fn contact_schema() -> Schema {
+    SchemaBuilder::new("Contact")
+        .field(optional_string("name"))
+        .field(repeated_group(
+            "phones",
+            vec![optional_string("number"), optional_string("phone_type")],
+        ))
+        .build()
+}
 
-`parquet-rs` and `arrow` provide the powerful, low-level tools necessary for
-high-performance data processing. However, this power comes at the cost of
-significant boilerplate and complexity for the common task of shredding nested
-data.
+fn shred_contacts(value: &[Value]) {
+    let schema = contact_schema();
 
-`denester` offers a higher-level, more ergonomic API focused squarely on this
-problem. By separating value construction from shredding, it reduces cognitive
-load, eliminates boilerplate, and provides a more declarative and less
-error-prone way to flatten nested structures.
+    for value in values {
+        let parser = ValueParser::new(&schema, value.iter_depth_first());
+
+        parser.into_iter().for_each(|parsed| {
+            if let Ok(shredded) = parsed {
+                println!("{shredded}");
+            }
+        })
+    }
+}
+
+/// Expected Output
+/// | String(Some("Alice"))    | name                     | def=1 | rep=0 |
+/// | String(Some("555-1234")) | phones.number            | def=2 | rep=0 |
+/// | String(Some("Home"))     | phones.phone_type        | def=2 | rep=0 |
+/// | String(Some("555-5678")) | phones.number            | def=2 | rep=1 |
+/// | String(Some("Work"))     | phones.phone_type        | def=2 | rep=1 |
+```
+
+[//]: # (The core difference lies in the separation of concerns:)
+
+[//]: # ()
+
+[//]: # (- **`denester`**: Separates the creation of a nested value from the process of)
+
+[//]: # (  shredding it. This allows for a more declarative and less error-prone)
+
+[//]: # (  approach.)
+
+[//]: # (- **`parquet-rs` &#40;raw API&#41;**: Fuses value creation and shredding into a single,)
+
+[//]: # (  imperative process. The developer is responsible for manually building the)
+
+[//]: # (  columnar &#40;shredded&#41; representation from the beginning.)
+
+[//]: # ()
+
+[//]: # (* **`parquet-rs`:** Using the raw `arrow` APIs, the developer does not build a)
+
+[//]: # (  nested struct first. Instead, they build the final columnar arrays directly.)
+
+[//]: # (  This requires manually managing builders for each field, iterating through the)
+
+[//]: # (  data, and correctly appending values and nulls to each builder to represent)
+
+[//]: # (  the nested structure. This process is imperative, complex, and)
+
+[//]: # (  boilerplate-heavy.)
+
+[//]: # ()
+
+[//]: # (* **`denester`:** The process is declarative and separated into two distinct)
+
+[//]: # (  steps:)
+
+[//]: # (    1. **Value Construction:** Create a nested value using the generic)
+
+[//]: # (       `ValueBuilder`. This code is simple and directly reflects the structure)
+
+[//]: # (       of the data you want to represent.)
+
+[//]: # (    2. **Shredding:** Pass the schema and the created value to the)
+
+[//]: # (       `ValueParser`, which handles the entire shredding process automatically.)
