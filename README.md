@@ -22,15 +22,11 @@ See a detailed [API comparison with arrow-rs](#comparison-with-arrow-shredding-a
 
 ## Usage
 
-Here is an example of how to,
-
-- Define a schema using the `SchemaBuilder`,
-- Define a value using the `ValueBuilder` and,
-- Then using the `ValueParser` for columnar shredding.
+### 1. Create a Schema Definition
 
 ```rust
 use denester::schema::{optional_string, repeated_group};
-use denester::{Schema, SchemaBuilder, Value, ValueBuilder, ValueParser};
+use denester::{Schema, SchemaBuilder};
 
 fn contact_schema() -> Schema {
     SchemaBuilder::new("Contact")
@@ -41,10 +37,15 @@ fn contact_schema() -> Schema {
         ))
         .build()
 }
+```
 
-fn main() {
-    let schema = contact_schema();
-    let value = ValueBuilder::default()
+### 2. Create a Nested Data Instance
+
+```rust
+use denester::{Value, ValueBuilder};
+
+fn contact_value() -> Value {
+    ValueBuilder::default()
         .field("name", "Alice")
         .repeated(
             "phones",
@@ -59,14 +60,27 @@ fn main() {
                     .build(),
             ],
         )
-        .build();
+        .build()
+}
+```
+
+### 3. Shred into Column Values
+
+```rust
+use denester::ValueParser;
+
+fn main() {
+    let schema = contact_schema();
+    let value = contact_value();
+
+    let iter = ValueParser::new(&schema, value.iter_depth_first());
 
     println!("--- Shredding New Value ---");
-    ValueParser::new(&schema, value.iter_depth_first()).into_iter().for_each(|parsed| {
-        if let Ok(shredded) = parsed {
-            println!("{shredded}");
+    for shredded_column_value in iter {
+        if let Ok(inner) = shredded_column_value {
+            println!("{inner}");
         }
-    })
+    }
 }
 ```
 
